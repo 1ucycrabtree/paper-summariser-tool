@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Summariser Tool",
+  "description": "Summarises and generates a synthesis of an academic resource.",
+  "version": "1.0",
+  "permissions": ["sidePanel", "activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Summariser Tool"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  }
+}
