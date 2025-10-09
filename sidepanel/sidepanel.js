@@ -66,14 +66,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     async function loadTabData(tabId) {
         try {
-            const result = await chrome.storage.session.get(`tab-${tabId}`);
-            const tabData = result[`tab-${tabId}`];
-
-            if (tabData) {
-                console.log(`Loaded stored data for tab ${tabId}:`, tabData);
-            } else {
-                console.log(`No stored data found for tab ${tabId}`);
-            }
+            await chrome.storage.session.get(`tab-${tabId}`);
         } catch (error) {
             console.error('Error loading tab data:', error);
         }
@@ -82,7 +75,6 @@ document.addEventListener('DOMContentLoaded', function () {
     async function saveTabData(tabId, data) {
         try {
             await chrome.storage.session.set({ [`tab-${tabId}`]: data });
-            console.log(`Saved data for tab ${tabId}:`, data);
         } catch (error) {
             console.error('Error saving tab data:', error);
         }
