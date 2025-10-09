@@ -1,6 +1,6 @@
 # paper-summariser tool!
 
-plan is to create an academic paper summariser and synthesis tool extension to help me with my dissertation reading. woo lit reviews! building as part of the google chrome built-in AI challenge 2025 🥸 
+plan is to create an academic paper summariser and synthesis tool extension to help me with my dissertation reading. woo lit reviews! building as part of the &#103;&#111;&#111;&#103;&#108;&#101; &#99;&#104;&#114;&#111;&#109;&#101; &#98;&#117;&#105;&#108;&#116;-&#105;&#110; &#65;&#73; &#99;&#104;&#97;&#108;&#108;&#101;&#110;&#103;&#101; &#50;&#48;&#50;&#53; 🥸 
 
 ### current workflow plan
 1. user opens an academic paper
