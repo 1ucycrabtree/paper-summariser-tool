@@ -16,9 +16,17 @@
 
         <main>
             <section class="input-section">
-                <div id="pageTitleContainer" class="page-info">
+                <div id="pageTitleContainer" class="page-info" style="text-overflow: clip;">
                     <div class="loading">Loading page information...</div>
                 </div>
+            </section>
+
+            <section class="action-section">
+                <button id="generateSummaryButton">Generate Summary</button>
+            </section>
+
+            <section class="output-section">
+                <div id="outputContainer" class="output"></div>
             </section>
         </main>
     </div>

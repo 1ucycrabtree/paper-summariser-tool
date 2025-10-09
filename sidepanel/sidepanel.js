@@ -87,3 +87,88 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 });
+
+document.getElementById('generateSummaryButton').addEventListener('click', async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    chrome.scripting.executeScript
+        ({
+            target: { tabId: tab.id },
+            files: ['scripts/content-parser.js']
+        }, (injectionResults) => {
+            const scrapedText = injectionResults[0].result;
+            getSummaryFromGeminiNano(scrapedText);
+        });
+});
+
+function chunkText(text, maxLength = 20000) {
+    // TODO: Improve chunking to split at sentence boundaries or overlaps?
+    const chunks = [];
+    for (let i = 0; i < text.length; i += maxLength) {
+        chunks.push(text.slice(i, i + maxLength));
+    }
+    return chunks;
+}
+
+async function getSummaryFromGeminiNano(text) {
+    const outputElement = document.getElementById('outputContainer');
+    outputElement.innerText = "Checking summarizer availability...";
+
+    const availability = await Summarizer.availability({
+        sharedContext: "Summarize the following article into a critical summary noting the main findings, contributions, and limitations.",
+        type: "tldr",
+        length: "long",
+        format: "markdown",
+        expectedInputLanguages: ["en"],
+        outputLanguage: "en",
+    });
+    if (availability === 'unavailable') {
+        outputElement.innerText = "Error: The Summarizer API is not available.";
+        return;
+    }
+
+    try {
+        outputElement.innerText = "Splitting article into chunks...";
+        const textChunks = chunkText(text);
+        outputElement.innerText = `Article split into ${textChunks.length} chunks. Preparing to summarize...`;
+
+        const summarizer = await Summarizer.create({
+            sharedContext: "Summarize the following article into a critical summary noting the main findings, contributions, and limitations.",
+            type: "tldr",
+            length: "long",
+            format: "markdown",
+            expectedInputLanguages: ["en"],
+            outputLanguage: "en",
+        });
+
+        outputElement.innerText = `Summarizer is available. Generating summary from ${textChunks.length} chunks...`;
+
+        const chunkSummaryPromises = textChunks.map(chunk => {
+            console.log('Inspecting chunk for summarization:', {
+                type: typeof chunk,
+                content: chunk
+            });
+            return summarizer.summarize(chunk);
+        });
+
+        const chunkSummaries = await Promise.all(chunkSummaryPromises);
+
+        if (chunkSummaries.length > 1) {
+            outputElement.innerText = "Creating final summary from chunk summaries...";
+            const combinedSummaries = chunkSummaries.join("\n\n---\n\n");
+
+            console.log('Inspecting combined text for final summary:', {
+                type: typeof combinedSummaries,
+                content: combinedSummaries
+            });
+            const finalSummary = await summarizer.summarize(combinedSummaries);
+            outputElement.innerText = finalSummary;
+        } else {
+            outputElement.innerText = chunkSummaries[0];
+        }
+
+    } catch (error) {
+        console.error("Error during summarization process:", error.name, error.message);
+        outputElement.innerText = `An error occurred: ${error.name}`;
+    }
+}

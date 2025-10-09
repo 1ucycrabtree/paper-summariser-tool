@@ -13,5 +13,11 @@
   },
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["scripts/content-parser.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
