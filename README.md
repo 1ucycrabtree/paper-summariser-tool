@@ -10,6 +10,5 @@ plan is to create an academic paper summariser and synthesis tool extension to h
 5. user can export the matrix (clipboard, csv, markdown)
 
 ### chosen technologies
-- summarizer API (will summarise the text and extract key info)
-- prompt API (will fill in the table)
-- rewrite API? (to rewrite the user-led ontent?)
+- summarizer API (will summarise abstract, intro, and conc and extract key info)
+- gemini developer API
