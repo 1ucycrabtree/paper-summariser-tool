@@ -1,3 +1,7 @@
+import * as pdfjsLib from '../scripts/pdf.mjs';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = '../scripts/pdf.worker.mjs';
+
 document.addEventListener('DOMContentLoaded', function () {
     const pageTitleContainer = document.getElementById('pageTitleContainer');
     let currentTabId = null;
@@ -88,87 +92,150 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
-document.getElementById('generateSummaryButton').addEventListener('click', async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('api-key-form');
+    const input = document.getElementById('api-key-input');
+    const status = document.getElementById('api-key-status');
 
-    chrome.scripting.executeScript
-        ({
-            target: { tabId: tab.id },
-            files: ['scripts/content-parser.js']
-        }, (injectionResults) => {
-            const scrapedText = injectionResults[0].result;
-            getSummaryFromGeminiNano(scrapedText);
-        });
+    chrome.storage.local.get(['geminiApiKey'], (result) => {
+        if (result.geminiApiKey) {
+            input.value = result.geminiApiKey;
+            status.textContent = 'API Key loaded.';
+        } else {
+            status.textContent = 'Please enter your Gemini API Key.';
+        }
+    });
+
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const apiKey = input.value.trim();
+        if (apiKey) {
+            chrome.storage.local.set({ geminiApiKey: apiKey }, () => {
+                if (chrome.runtime.lastError) {
+                    status.textContent = 'Error saving API Key.';
+                    console.error('Error saving Gemini API Key:', chrome.runtime.lastError);
+                } else {
+                    status.textContent = 'API Key saved.';
+                    console.log('Gemini API Key saved.');
+                }
+            });
+        } else {
+            status.textContent = 'API Key cannot be empty.';
+            console.log('API Key cannot be empty.');
+        }
+    });
 });
+const summarizeButton = document.getElementById('summarizeButton');
+const outputDiv = document.getElementById('output');
 
-function chunkText(text, maxLength = 20000) {
-    // TODO: Improve chunking to split at sentence boundaries or overlaps?
-    const chunks = [];
-    for (let i = 0; i < text.length; i += maxLength) {
-        chunks.push(text.slice(i, i + maxLength));
+async function parsePdfBlob(pdfBlob) {
+    try {
+        outputDiv.textContent = 'Parsing PDF...';
+        const arrayBuffer = await pdfBlob.arrayBuffer();
+        const typedArray = new Uint8Array(arrayBuffer);
+
+        const pdf = await pdfjsLib.getDocument(typedArray).promise;
+        // Parallelize page text extraction for better performance
+        const pagePromises = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+            pagePromises.push(pdf.getPage(i).then(page => page.getTextContent()));
+        }
+        const textContents = await Promise.all(pagePromises);
+        const allText = textContents
+            .map(textContent => textContent.items.map(item => item.str).join(' '))
+            .join(' ');
+
+        outputDiv.textContent = allText;
+
+    } catch (error) {
+        console.error("PDF parsing failed:", error);
+        outputDiv.textContent = `Error: ${error.message}. Make sure the current tab contains a valid PDF.`;
     }
-    return chunks;
 }
 
-async function getSummaryFromGeminiNano(text) {
-    const outputElement = document.getElementById('outputContainer');
-    outputElement.innerText = "Checking summarizer availability...";
+function getPaperIdentifier(url) {
+    // TODO: expand to fetch doi from page metadata if not in URL
+    let identifier = null;
+    const doiMatch = url.match(/(10.\d{4,9}\/[-._;()/:A-Z0-9]+)/i);
+    if (doiMatch) {
+        identifier = "DOI:" + doiMatch[1];
+    } else if (url.includes("semanticscholar.org/paper/")) {
+        const ssMatch = url.match(/semanticscholar.org\/paper\/([^?#]*)/);
+        if (ssMatch) {
+            identifier = ssMatch[1].replace(/\/$/, '');
+        }
+    } else if (url.includes("arxiv.org")) {
+        const arxivMatch = url.match(/arxiv.org\/(?:abs|pdf)\/(.*)/);
+        if (arxivMatch) {
+            identifier = "ARXIV:" + arxivMatch[1].replace('.pdf', '');
+        }
+    }
+    return identifier;
+}
 
-    const availability = await Summarizer.availability({
-        sharedContext: "Summarize the following article into a critical summary noting the main findings, contributions, and limitations.",
-        type: "tldr",
-        length: "long",
-        format: "markdown",
-        expectedInputLanguages: ["en"],
-        outputLanguage: "en",
-    });
-    if (availability === 'unavailable') {
-        outputElement.innerText = "Error: The Summarizer API is not available.";
+summarizeButton.addEventListener('click', async () => {
+    outputDiv.textContent = 'Analyzing tab...';
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab?.url) {
+        outputDiv.textContent = 'Could not get page information.';
         return;
     }
 
+    const url = tab.url.toLowerCase();
+    const title = tab.title ? tab.title.toLowerCase() : '';
+
+    // flexible regex to find "pdf" in the URL path or query string (it looks for /pdf, .pdf, ?pdf, or =pdf)
+    const pdfInUrlRegex = /[./?=]pdf/i;
+
+    const isUrlDirectPdf = url.endsWith('.pdf') || url.startsWith('blob:');
+    const isViewerActive = title.endsWith('.pdf');
+    const isPdfInUrl = pdfInUrlRegex.test(tab.url);
+
+    if (isUrlDirectPdf || isViewerActive || isPdfInUrl) {
+        outputDiv.textContent = 'PDF viewer detected. Downloading file...';
+
+        try {
+            const pdfResponse = await fetch(tab.url);
+            const pdfBlob = await pdfResponse.blob();
+            await parsePdfBlob(pdfBlob);
+        } catch (error) {
+            console.error("Failed to fetch PDF from viewer:", error);
+            outputDiv.textContent = `Error: Could not fetch the PDF from the viewer. The file might be protected or on a local path.`;
+        }
+        return;
+    }
+
+    const identifier = getPaperIdentifier(tab.url);
+    if (!identifier) {
+        outputDiv.textContent = 'Could not identify a paper on this page. If you have the PDF open, please ensure the URL ends with ".pdf".';
+        return;
+    }
+
+    outputDiv.textContent = `Found paper identifier: ${identifier}. Searching for PDF link...`;
+    const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifier}?fields=openAccessPdf`;
+
     try {
-        outputElement.innerText = "Splitting article into chunks...";
-        const textChunks = chunkText(text);
-        outputElement.innerText = `Article split into ${textChunks.length} chunks. Preparing to summarize...`;
+        const ssResponse = await fetch(semanticScholarUrl);
+        const ssData = await ssResponse.json();
+        const pdfUrl = ssData?.openAccessPdf?.url;
 
-        const summarizer = await Summarizer.create({
-            sharedContext: "Summarize the following article into a critical summary noting the main findings, contributions, and limitations.",
-            type: "tldr",
-            length: "long",
-            format: "markdown",
-            expectedInputLanguages: ["en"],
-            outputLanguage: "en",
-        });
-
-        outputElement.innerText = `Summarizer is available. Generating summary from ${textChunks.length} chunks...`;
-
-        const chunkSummaryPromises = textChunks.map(chunk => {
-            console.log('Inspecting chunk for summarization:', {
-                type: typeof chunk,
-                content: chunk
-            });
-            return summarizer.summarize(chunk);
-        });
-
-        const chunkSummaries = await Promise.all(chunkSummaryPromises);
-
-        if (chunkSummaries.length > 1) {
-            outputElement.innerText = "Creating final summary from chunk summaries...";
-            const combinedSummaries = chunkSummaries.join("\n\n---\n\n");
-
-            console.log('Inspecting combined text for final summary:', {
-                type: typeof combinedSummaries,
-                content: combinedSummaries
-            });
-            const finalSummary = await summarizer.summarize(combinedSummaries);
-            outputElement.innerText = finalSummary;
-        } else {
-            outputElement.innerText = chunkSummaries[0];
+        if (!pdfUrl) {
+            throw new Error("No Open Access PDF link found via Semantic Scholar.");
         }
 
+        // sanatize url
+        outputDiv.textContent = 'Found a potential PDF link. ';
+        const link = document.createElement('a');
+        link.href = pdfUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Open this link';
+        outputDiv.appendChild(link);
+        outputDiv.appendChild(document.createTextNode(' in a new tab. Once the PDF is visible, click the "Analyze Active Tab" button again.'));
+
     } catch (error) {
-        console.error("Error during summarization process:", error.name, error.message);
-        outputElement.innerText = `An error occurred: ${error.name}`;
+        console.error("API call failed:", error);
+        outputDiv.textContent = `Error: ${error.message}`;
     }
-}
+});

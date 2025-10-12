@@ -15,9 +15,26 @@
         </header>
 
         <main>
+            <section class="api-section">
+                <h3>API Key Configuration</h3>
+                <form id="api-key-form">
+                    <label for="api-key-input">Enter your Gemini API key:</label>
+                    <input type="text" id="api-key-input" placeholder="Paste your key here..." required>
+                    <button type="submit">Save Key</button>
+                </form>
+                <p id="api-key-status"></p>
+            </section>
+
             <section class="input-section">
                 <div id="pageTitleContainer" class="page-info" style="text-overflow: clip;">
                     <div class="loading">Loading page information...</div>
+                </div>
+            </section>
+
+            <section class="summary-section">
+                <button id="summarizeButton">Generate Key Findings</button>
+                <div id="summaryPointsContainer" class="summary-points">
+                    <div id="output" class="loading">Waiting for user action...</div>
                 </div>
             </section>
 
@@ -31,7 +48,7 @@
         </main>
     </div>
 
-    <script src="sidepanel.js"></script>
+    <script src="sidepanel.js" type="module"></script>
 </body>
 
 </html>

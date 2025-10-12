@@ -4,9 +4,10 @@
   "description": "Summarises and generates a synthesis of an academic resource.",
   "version": "1.0",
   "permissions": ["sidePanel", "activeTab", "scripting", "storage", "tabs"],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": ["https://api.semanticscholar.org/", "<all_urls>"],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_title": "Summariser Tool"
@@ -14,9 +15,12 @@
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"
   },
+  "trial_tokens": [
+    "A4J/88rs/mO8UDt/1xp0aHoWQ8xWJmDilZLxs64su+hVdGHWOaOPY3dxOslWs3AhGOq8WanH0ST5XiXjv+XP2AkAAACMeyJvcmlnaW4iOiJjaHJvbWUtZXh0ZW5zaW9uOi8va2pvb3BrYWZsbGxhZWVhYm1hZWdpcGxkZ2dpaGxoaWYiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElGb3JFeHRlbnNpb24iLCJleHBpcnkiOjE3NjA0ODYzOTksImlzVGhpcmRQYXJ0eSI6dHJ1ZX0="
+  ],
   "web_accessible_resources": [
     {
-      "resources": ["scripts/content-parser.js"],
+      "resources": ["scripts/pdf.worker.mjs"],
       "matches": ["<all_urls>"]
     }
   ]
