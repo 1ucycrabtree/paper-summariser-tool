@@ -1,9 +1,9 @@
-import * as pdfjsLib from '../scripts/pdf.mjs';
+import * as pdfjsLib from "../scripts/pdf.mjs";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = '../scripts/pdf.worker.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = "../scripts/pdf.worker.mjs";
 
-document.addEventListener('DOMContentLoaded', function () {
-    const pageTitleContainer = document.getElementById('pageTitleContainer');
+document.addEventListener("DOMContentLoaded", function () {
+    const pageTitleContainer = document.getElementById("pageTitleContainer");
     let currentTabId = null;
 
     init();
@@ -11,7 +11,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     async function init() {
         try {
-            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            const tabs = await chrome.tabs.query({
+                active: true,
+                currentWindow: true,
+            });
             const currentTab = tabs[0];
 
             if (currentTab) {
@@ -19,11 +22,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 await displayTabInfo(currentTab);
                 await loadTabData(currentTab.id);
             } else {
-                showError('Unable to get current page information');
+                showError("Unable to get current page information");
             }
         } catch (error) {
-            console.error('Error initializing sidepanel:', error);
-            showError('Error initializing sidepanel');
+            console.error("Error initializing sidepanel:", error);
+            showError("Error initializing sidepanel");
         }
     }
 
@@ -36,15 +39,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     await displayTabInfo(tab);
                 } catch (error) {
-                    console.error('Error handling tab activation:', error);
-                    showError('Error loading tab information');
+                    console.error("Error handling tab activation:", error);
+                    showError("Error loading tab information");
                 }
             });
         }
 
         if (chrome.tabs?.onUpdated) {
             chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-                if (tabId === currentTabId && changeInfo.status === 'complete') {
+                if (tabId === currentTabId && changeInfo.status === "complete") {
                     await displayTabInfo(tab);
                 }
             });
@@ -64,7 +67,7 @@ document.addEventListener('DOMContentLoaded', function () {
         await saveTabData(tab.id, {
             title: tab.title,
             url: tab.url,
-            lastUpdated: timestamp
+            lastUpdated: timestamp,
         });
     }
 
@@ -72,7 +75,7 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             await chrome.storage.session.get(`tab-${tabId}`);
         } catch (error) {
-            console.error('Error loading tab data:', error);
+            console.error("Error loading tab data:", error);
         }
     }
 
@@ -80,7 +83,7 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             await chrome.storage.session.set({ [`tab-${tabId}`]: data });
         } catch (error) {
-            console.error('Error saving tab data:', error);
+            console.error("Error saving tab data:", error);
         }
     }
 
@@ -92,45 +95,48 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
-document.addEventListener('DOMContentLoaded', function () {
-    const form = document.getElementById('api-key-form');
-    const input = document.getElementById('api-key-input');
-    const status = document.getElementById('api-key-status');
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById("api-key-form");
+    const input = document.getElementById("api-key-input");
+    const status = document.getElementById("api-key-status");
 
-    chrome.storage.local.get(['geminiApiKey'], (result) => {
+    chrome.storage.local.get(["geminiApiKey"], (result) => {
         if (result.geminiApiKey) {
             input.value = result.geminiApiKey;
-            status.textContent = 'API Key loaded.';
+            status.textContent = "API Key loaded.";
         } else {
-            status.textContent = 'Please enter your Gemini API Key.';
+            status.textContent = "Please enter your Gemini API Key.";
         }
     });
 
-    form.addEventListener('submit', (event) => {
+    form.addEventListener("submit", (event) => {
         event.preventDefault();
         const apiKey = input.value.trim();
         if (apiKey) {
             chrome.storage.local.set({ geminiApiKey: apiKey }, () => {
                 if (chrome.runtime.lastError) {
-                    status.textContent = 'Error saving API Key.';
-                    console.error('Error saving Gemini API Key:', chrome.runtime.lastError);
+                    status.textContent = "Error saving API Key.";
+                    console.error(
+                        "Error saving Gemini API Key:",
+                        chrome.runtime.lastError
+                    );
                 } else {
-                    status.textContent = 'API Key saved.';
-                    console.log('Gemini API Key saved.');
+                    status.textContent = "API Key saved.";
+                    console.log("Gemini API Key saved.");
                 }
             });
         } else {
-            status.textContent = 'API Key cannot be empty.';
-            console.log('API Key cannot be empty.');
+            status.textContent = "API Key cannot be empty.";
+            console.log("API Key cannot be empty.");
         }
     });
 });
-const summarizeButton = document.getElementById('summarizeButton');
-const outputDiv = document.getElementById('output');
+const summarizeButton = document.getElementById("summarizeButton");
+const outputDiv = document.getElementById("output");
 
 async function parsePdfBlob(pdfBlob) {
     try {
-        outputDiv.textContent = 'Parsing PDF...';
+        outputDiv.textContent = "Parsing PDF...";
         const arrayBuffer = await pdfBlob.arrayBuffer();
         const typedArray = new Uint8Array(arrayBuffer);
 
@@ -138,15 +144,14 @@ async function parsePdfBlob(pdfBlob) {
         // Parallelize page text extraction for better performance
         const pagePromises = [];
         for (let i = 1; i <= pdf.numPages; i++) {
-            pagePromises.push(pdf.getPage(i).then(page => page.getTextContent()));
+            pagePromises.push(pdf.getPage(i).then((page) => page.getTextContent()));
         }
         const textContents = await Promise.all(pagePromises);
         const allText = textContents
-            .map(textContent => textContent.items.map(item => item.str).join(' '))
-            .join(' ');
+            .map((textContent) => textContent.items.map((item) => item.str).join(" "))
+            .join(" ");
 
         outputDiv.textContent = allText;
-
     } catch (error) {
         console.error("PDF parsing failed:", error);
         outputDiv.textContent = `Error: ${error.message}. Make sure the current tab contains a valid PDF.`;
@@ -155,6 +160,24 @@ async function parsePdfBlob(pdfBlob) {
 
 function getPaperIdentifier(url) {
     // TODO: expand to fetch doi from page metadata if not in URL
+    // The following types of IDs are supported:
+
+    // <sha> - a Semantic Scholar ID, e.g. 649def34f8be52c8b66281af98ae884c09aef38b
+    // CorpusId:<id> - a Semantic Scholar numerical ID, e.g. CorpusId:215416146
+    // DOI:<doi> - a Digital Object Identifier, e.g. DOI:10.18653/v1/N18-3011
+    // ARXIV:<id> - arXiv.rg, e.g. ARXIV:2106.15928
+    // MAG:<id> - Microsoft Academic Graph, e.g. MAG:112218234
+    // ACL:<id> - Association for Computational Linguistics, e.g. ACL:W12-3903
+    // PMID:<id> - PubMed/Medline, e.g. PMID:19872477
+    // PMCID:<id> - PubMed Central, e.g. PMCID:2323736
+    // URL:<url> - URL from one of the sites listed below, e.g. URL:https://arxiv.org/abs/2106.15928v1
+    // URLs are recognized from the following sites:
+    // semanticscholar.org
+    // arxiv.org
+    // aclweb.org
+    // acm.org
+    // biorxiv.org
+    // if none of these are found, scrape the page for DOI in metadata otherwise return null
     let identifier = null;
     const doiMatch = url.match(/(10.\d{4,9}\/[-._;()/:A-Z0-9]+)/i);
     if (doiMatch) {
@@ -162,38 +185,38 @@ function getPaperIdentifier(url) {
     } else if (url.includes("semanticscholar.org/paper/")) {
         const ssMatch = url.match(/semanticscholar.org\/paper\/([^?#]*)/);
         if (ssMatch) {
-            identifier = ssMatch[1].replace(/\/$/, '');
+            identifier = ssMatch[1].replace(/\/$/, "");
         }
     } else if (url.includes("arxiv.org")) {
         const arxivMatch = url.match(/arxiv.org\/(?:abs|pdf)\/(.*)/);
         if (arxivMatch) {
-            identifier = "ARXIV:" + arxivMatch[1].replace('.pdf', '');
+            identifier = "ARXIV:" + arxivMatch[1].replace(".pdf", "");
         }
     }
     return identifier;
 }
 
-summarizeButton.addEventListener('click', async () => {
-    outputDiv.textContent = 'Analyzing tab...';
+summarizeButton.addEventListener("click", async () => {
+    outputDiv.textContent = "Analyzing tab...";
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     if (!tab?.url) {
-        outputDiv.textContent = 'Could not get page information.';
+        outputDiv.textContent = "Could not get page information.";
         return;
     }
 
     const url = tab.url.toLowerCase();
-    const title = tab.title ? tab.title.toLowerCase() : '';
+    const title = tab.title ? tab.title.toLowerCase() : "";
 
     // flexible regex to find "pdf" in the URL path or query string (it looks for /pdf, .pdf, ?pdf, or =pdf)
     const pdfInUrlRegex = /[./?=]pdf/i;
 
-    const isUrlDirectPdf = url.endsWith('.pdf') || url.startsWith('blob:');
-    const isViewerActive = title.endsWith('.pdf');
+    const isUrlDirectPdf = url.endsWith(".pdf") || url.startsWith("blob:");
+    const isViewerActive = title.endsWith(".pdf");
     const isPdfInUrl = pdfInUrlRegex.test(tab.url);
 
     if (isUrlDirectPdf || isViewerActive || isPdfInUrl) {
-        outputDiv.textContent = 'PDF viewer detected. Downloading file...';
+        outputDiv.textContent = "PDF viewer detected. Downloading file...";
 
         try {
             const pdfResponse = await fetch(tab.url);
@@ -208,7 +231,8 @@ summarizeButton.addEventListener('click', async () => {
 
     const identifier = getPaperIdentifier(tab.url);
     if (!identifier) {
-        outputDiv.textContent = 'Could not identify a paper on this page. If you have the PDF open, please ensure the URL ends with ".pdf".';
+        outputDiv.textContent =
+            'Could not identify a paper on this page. If you have the PDF open, please ensure the URL ends with ".pdf".';
         return;
     }
 
@@ -225,15 +249,18 @@ summarizeButton.addEventListener('click', async () => {
         }
 
         // sanatize url
-        outputDiv.textContent = 'Found a potential PDF link. ';
-        const link = document.createElement('a');
+        outputDiv.textContent = "Found a potential PDF link. ";
+        const link = document.createElement("a");
         link.href = pdfUrl;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.textContent = 'Open this link';
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Open this link";
         outputDiv.appendChild(link);
-        outputDiv.appendChild(document.createTextNode(' in a new tab. Once the PDF is visible, click the "Analyze Active Tab" button again.'));
-
+        outputDiv.appendChild(
+            document.createTextNode(
+                ' in a new tab. Once the PDF is visible, click the "Analyze Active Tab" button again.'
+            )
+        );
     } catch (error) {
         console.error("API call failed:", error);
         outputDiv.textContent = `Error: ${error.message}`;
