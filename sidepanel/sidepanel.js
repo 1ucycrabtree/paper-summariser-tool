@@ -97,17 +97,17 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     function setApiKeyFormVisibility(visible) {
-        const form = document.getElementById('api-key-form');
-        const arrow = document.getElementById('api-toggle-arrow');
-        form.style.display = visible ? 'flex' : 'none';
+        const form = document.getElementById("api-key-form");
+        const arrow = document.getElementById("api-toggle-arrow");
+        form.style.display = visible ? "flex" : "none";
         form.dataset.visible = visible ? "true" : "false";
-        arrow.textContent = visible ? '▼' : '▶';
+        arrow.textContent = visible ? "▼" : "▶";
     }
 
     function setupApiKeyFormToggle() {
-        const toggle = document.getElementById('api-config-toggle');
-        const form = document.getElementById('api-key-form');
-        toggle.addEventListener('click', () => {
+        const toggle = document.getElementById("api-config-toggle");
+        const form = document.getElementById("api-key-form");
+        toggle.addEventListener("click", () => {
             const currentlyVisible = form.dataset.visible === "true";
             setApiKeyFormVisibility(!currentlyVisible);
         });
@@ -137,20 +137,26 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 // listen to show/hide API key checkbox
-document.getElementById("toggle-api-key-visibility").addEventListener("change", function () {
-    const apiKeyInput = document.getElementById("api-key-input");
-    if (this.checked) {
-        apiKeyInput.type = "text";
-        apiKeyInput.focus();
-    } else {
-        apiKeyInput.type = "password";
-    }
-});
+document
+    .getElementById("toggle-api-key-visibility")
+    .addEventListener("change", function () {
+        const apiKeyInput = document.getElementById("api-key-input");
+        if (this.checked) {
+            apiKeyInput.type = "text";
+            apiKeyInput.focus();
+        } else {
+            apiKeyInput.type = "password";
+        }
+    });
 
 const summarizeButton = document.getElementById("summarizeButton");
 const outputDiv = document.getElementById("output");
 
-async function saveSummarySectionState(tabId, containerContent, containerState) {
+async function saveSummarySectionState(
+    tabId,
+    containerContent,
+    containerState
+) {
     try {
         await chrome.storage.session.set({
             [`state-${tabId}`]: { containerContent, containerState },
@@ -166,7 +172,9 @@ summarizeButton.addEventListener("click", async () => {
 
     if (!tab?.url) {
         outputDiv.textContent = "Could not get page information.";
-        await saveSummarySectionState(tab.id, outputDiv.innerHTML, { display: outputDiv.style.display });
+        await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+        });
         return;
     }
 
@@ -186,21 +194,32 @@ summarizeButton.addEventListener("click", async () => {
         try {
             const pdfResponse = await fetch(tab.url);
             const pdfBlob = await pdfResponse.blob();
-            await parsePdfBlob(pdfBlob);
-            await saveSummarySectionState(tab.id, outputDiv.innerHTML, { display: outputDiv.style.display });
+            outputDiv.textContent = "PDF fetched. Parsing...";
+            const parsedText = await parsePdfBlob(pdfBlob);
+
+            outputDiv.textContent = "Parsing complete. Generating summary...";
+            await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
+                display: outputDiv.style.display,
+            });
+
+            chrome.runtime.sendMessage({
+                action: "generateSummary",
+                file: parsedText,
+                tabId: tab.id,
+            });
         } catch (error) {
-            console.error("Failed to fetch PDF from viewer:", error);
-            outputDiv.textContent = `Error: Could not fetch the PDF from the viewer. The file might be protected or on a local path.`;
-            await saveSummarySectionState(tab.id, outputDiv.innerHTML, { display: outputDiv.style.display });
+            console.error("Failed to fetch or parse PDF:", error);
+            outputDiv.textContent = `Error: ${error.message}`;
         }
         return;
     }
 
     const identifierResult = await extractPaperIdentifierFromUrl(tab.url, tab.id);
     if (!identifierResult.found) {
-        outputDiv.textContent =
-            `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
-        await saveSummarySectionState(tab.id, outputDiv.innerHTML, { display: outputDiv.style.display });
+        outputDiv.textContent = `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
+        await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+        });
         return;
     }
 
@@ -208,6 +227,7 @@ summarizeButton.addEventListener("click", async () => {
     const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifierResult.identifier}?fields=openAccessPdf`;
     try {
         const ssResponse = await fetch(semanticScholarUrl);
+        // TODO: handle rate limiting (429) and other errors
         const ssData = await ssResponse.json();
         const pdfUrl = ssData?.openAccessPdf?.url;
 
@@ -229,11 +249,15 @@ summarizeButton.addEventListener("click", async () => {
             )
         );
 
-        await saveSummarySectionState(tab.id, outputDiv.innerHTML, { display: outputDiv.style.display });
+        await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+        });
     } catch (error) {
         console.error("API call failed:", error);
         outputDiv.textContent = `Error: ${error.message}`;
-        await saveSummarySectionState(tab.id, outputDiv.innerHTML, { display: outputDiv.style.display });
+        await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+        });
     }
 });
 
@@ -252,13 +276,10 @@ async function parsePdfBlob(pdfBlob) {
         const allText = textContents
             .map((textContent) => textContent.items.map((item) => item.str).join(" "))
             .join(" ");
-
-        const summary = allText.slice(0, 500) + "..."; // show only the first 500 characters
-        outputDiv.textContent = summary;
+        return allText;
     } catch (error) {
         console.error("PDF parsing failed:", error);
-        outputDiv.textContent = `Error: ${error.message}. Make sure the current tab contains a valid PDF.`;
-        return null;
+        throw new Error("PDF parsing failed. Make sure the current tab contains a valid PDF.");
     }
 }
 
@@ -272,15 +293,21 @@ async function extractPaperIdentifierFromUrl(url, tabId) {
         identifier = "DOI:" + doiMatch[0];
         return { identifier, found: true, message: "DOI found in URL." };
     } else if (
-        /(semanticscholar\.org|arxiv\.org|aclweb\.org|acm\.org|biorxiv\.org)/i.test(url)
+        /(semanticscholar\.org|arxiv\.org|aclweb\.org|acm\.org|biorxiv\.org)/i.test(
+            url
+        )
     ) {
         identifier = "URL:" + url;
-        return { identifier, found: true, message: "Accepted website found in URL." };
+        return {
+            identifier,
+            found: true,
+            message: "Accepted website found in URL.",
+        };
     } else {
         try {
             const hrefArray = await chrome.scripting.executeScript({
                 target: { tabId: tabId },
-                files: ['scripts/content.js']
+                files: ["scripts/content.js"],
             });
 
             if (hrefArray && hrefArray.length > 0 && hrefArray[0].result) {
@@ -289,19 +316,56 @@ async function extractPaperIdentifierFromUrl(url, tabId) {
                 const linkDoiMatch = href.match(doiRegex);
                 if (linkDoiMatch) {
                     identifier = "DOI:" + linkDoiMatch[0];
-                    return { identifier, found: true, message: "DOI found in page links." };
+                    return {
+                        identifier,
+                        found: true,
+                        message: "DOI found in page links.",
+                    };
                 }
             } else {
                 console.log("Content script did not find a DOI link.");
             }
         } catch (error) {
             console.error("Error executing content script:", error);
-            return { identifier: null, found: false, message: "Error executing content script." };
+            return {
+                identifier: null,
+                found: false,
+                message: "Error executing content script.",
+            };
         }
     }
     if (identifier) {
         return { identifier, found: true, message: "Identifier found." };
     } else {
-        return { identifier: null, found: false, message: "No identifier found in URL or page links." };
+        return {
+            identifier: null,
+            found: false,
+            message: "No identifier found in URL or page links.",
+        };
     }
 }
+
+let isFirstChunk = true;
+
+chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+    if (request.action === "summaryChunkReceived") {
+        if (isFirstChunk) {
+            outputDiv.textContent = "";
+            isFirstChunk = false;
+        }
+        outputDiv.textContent += request.chunk;
+    }
+
+    else if (request.action === "summaryStreamEnded") {
+        console.log("Summary stream finished.");
+        isFirstChunk = true;
+    }
+
+    else if (request.action === "aiError") {
+        outputDiv.textContent = `An error occurred: ${request.error}`;
+        isFirstChunk = true;
+    }
+    await saveSummarySectionState(sender.tab?.id, outputDiv.innerHTML, {
+        display: outputDiv.style.display,
+    });
+});
