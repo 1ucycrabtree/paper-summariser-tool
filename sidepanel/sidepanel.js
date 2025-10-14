@@ -303,8 +303,7 @@ async function extractPaperIdentifierFromUrl(url, tabId) {
             }
         } catch (error) {
             console.error("Error executing content script:", error);
-            return { identifier: null, found: false, message: "Something went wrong." };
-
+            return { identifier: null, found: false, message: "Error executing content script: " + error };
         }
     }
     if (identifier) {
