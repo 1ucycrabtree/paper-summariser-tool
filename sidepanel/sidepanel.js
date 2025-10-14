@@ -20,9 +20,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (currentTab) {
                 currentTabId = currentTab.id;
-                await displayTabInfo(currentTab);
-                await loadTabData(currentTab.id);
-                await loadSummarySectionState(currentTab.id); // Load the container state and summary
+                await loadSummarySectionState(currentTab.id);
             } else {
                 showError("Unable to get current page information");
             }
@@ -38,8 +36,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 try {
                     const tab = await chrome.tabs.get(activeInfo.tabId);
                     currentTabId = activeInfo.tabId;
-
-                    await displayTabInfo(tab);
                     await loadSummarySectionState(tab.id);
                 } catch (error) {
                     console.error("Error handling tab activation:", error);
@@ -51,43 +47,9 @@ document.addEventListener("DOMContentLoaded", function () {
         if (chrome.tabs?.onUpdated) {
             chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
                 if (tabId === currentTabId && changeInfo.status === "complete") {
-                    await displayTabInfo(tab);
                     await loadSummarySectionState(tabId);
                 }
             });
-        }
-    }
-
-    async function displayTabInfo(tab) {
-        const timestamp = new Date().toLocaleTimeString();
-
-        pageTitleContainer.innerHTML = `
-            <div>
-                <strong>Title:</strong> ${tab.title}<br>
-                <strong>URL:</strong> <span style="font-size: 12px; color: #6c757d;">${tab.url}</span><br>
-            </div>
-        `;
-
-        await saveTabData(tab.id, {
-            title: tab.title,
-            url: tab.url,
-            lastUpdated: timestamp,
-        });
-    }
-
-    async function loadTabData(tabId) {
-        try {
-            await chrome.storage.session.get(`tab-${tabId}`);
-        } catch (error) {
-            console.error("Error loading tab data:", error);
-        }
-    }
-
-    async function saveTabData(tabId, data) {
-        try {
-            await chrome.storage.session.set({ [`tab-${tabId}`]: data });
-        } catch (error) {
-            console.error("Error saving tab data:", error);
         }
     }
 
@@ -125,11 +87,31 @@ document.addEventListener("DOMContentLoaded", function () {
     chrome.storage.local.get(["geminiApiKey"], (result) => {
         if (result.geminiApiKey) {
             input.value = result.geminiApiKey;
-            status.textContent = "API Key loaded.";
+            status.textContent = "API key loaded from local storage.";
+            setApiKeyFormVisibility(false);
         } else {
-            status.textContent = "Please enter your Gemini API Key.";
+            status.textContent = "Please enter your Gemini API key.";
+            setApiKeyFormVisibility(true);
         }
+        setupApiKeyFormToggle();
     });
+
+    function setApiKeyFormVisibility(visible) {
+        const form = document.getElementById('api-key-form');
+        const arrow = document.getElementById('api-toggle-arrow');
+        form.style.display = visible ? 'flex' : 'none';
+        form.dataset.visible = visible ? "true" : "false";
+        arrow.textContent = visible ? '▼' : '▶';
+    }
+
+    function setupApiKeyFormToggle() {
+        const toggle = document.getElementById('api-config-toggle');
+        const form = document.getElementById('api-key-form');
+        toggle.addEventListener('click', () => {
+            const currentlyVisible = form.dataset.visible === "true";
+            setApiKeyFormVisibility(!currentlyVisible);
+        });
+    }
 
     form.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -137,22 +119,34 @@ document.addEventListener("DOMContentLoaded", function () {
         if (apiKey) {
             chrome.storage.local.set({ geminiApiKey: apiKey }, () => {
                 if (chrome.runtime.lastError) {
-                    status.textContent = "Error saving API Key.";
+                    status.textContent = "Error saving API key.";
                     console.error(
-                        "Error saving Gemini API Key:",
+                        "Error saving Gemini API key:",
                         chrome.runtime.lastError
                     );
                 } else {
-                    status.textContent = "API Key saved.";
-                    console.log("Gemini API Key saved.");
+                    status.textContent = "API key saved.";
+                    console.log("Gemini API key saved.");
                 }
             });
         } else {
-            status.textContent = "API Key cannot be empty.";
-            console.log("API Key cannot be empty.");
+            status.textContent = "API key cannot be empty.";
+            console.log("API key cannot be empty.");
         }
     });
 });
+
+// listen to show/hide API key checkbox
+document.getElementById("toggle-api-key-visibility").addEventListener("change", function () {
+    const apiKeyInput = document.getElementById("api-key-input");
+    if (this.checked) {
+        apiKeyInput.type = "text";
+        apiKeyInput.focus();
+    } else {
+        apiKeyInput.type = "password";
+    }
+});
+
 const summarizeButton = document.getElementById("summarizeButton");
 const outputDiv = document.getElementById("output");
 
@@ -259,9 +253,8 @@ async function parsePdfBlob(pdfBlob) {
             .map((textContent) => textContent.items.map((item) => item.str).join(" "))
             .join(" ");
 
-        const summary = allText.slice(0, 500); // show only the first 500 characters
+        const summary = allText.slice(0, 500) + "..."; // show only the first 500 characters
         outputDiv.textContent = summary;
-        return summary;
     } catch (error) {
         console.error("PDF parsing failed:", error);
         outputDiv.textContent = `Error: ${error.message}. Make sure the current tab contains a valid PDF.`;
