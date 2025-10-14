@@ -157,42 +157,49 @@ async function parsePdfBlob(pdfBlob) {
     }
 }
 
-function getPaperIdentifier(url) {
-    // TODO: expand to fetch doi from page metadata if not in URL
-    // The following types of IDs are supported:
+async function extractPaperIdentifierFromUrl(url, tabId) {
+    const doiRegex = /10\.\d{4,9}\/[^\s]+/i;
 
-    // <sha> - a Semantic Scholar ID, e.g. 649def34f8be52c8b66281af98ae884c09aef38b
-    // CorpusId:<id> - a Semantic Scholar numerical ID, e.g. CorpusId:215416146
-    // DOI:<doi> - a Digital Object Identifier, e.g. DOI:10.18653/v1/N18-3011
-    // ARXIV:<id> - arXiv.rg, e.g. ARXIV:2106.15928
-    // MAG:<id> - Microsoft Academic Graph, e.g. MAG:112218234
-    // ACL:<id> - Association for Computational Linguistics, e.g. ACL:W12-3903
-    // PMID:<id> - PubMed/Medline, e.g. PMID:19872477
-    // PMCID:<id> - PubMed Central, e.g. PMCID:2323736
-    // URL:<url> - URL from one of the sites listed below, e.g. URL:https://arxiv.org/abs/2106.15928v1
-    // URLs are recognized from the following sites:
-    // semanticscholar.org
-    // arxiv.org
-    // aclweb.org
-    // acm.org
-    // biorxiv.org
-    // if none of these are found, scrape the page for DOI in metadata otherwise return null
     let identifier = null;
-    const doiMatch = url.match(/(10.\d{4,9}\/[-._;()/:A-Z0-9]+)/i);
+
+    const doiMatch = url.match(doiRegex);
     if (doiMatch) {
-        identifier = "DOI:" + doiMatch[1];
-    } else if (url.includes("semanticscholar.org/paper/")) {
-        const ssMatch = url.match(/semanticscholar.org\/paper\/([^?#]*)/);
-        if (ssMatch) {
-            identifier = ssMatch[1].replace(/\/$/, "");
-        }
-    } else if (url.includes("arxiv.org")) {
-        const arxivMatch = url.match(/arxiv.org\/(?:abs|pdf)\/(.*)/);
-        if (arxivMatch) {
-            identifier = "ARXIV:" + arxivMatch[1].replace(".pdf", "");
+        identifier = "DOI:" + doiMatch[0];
+        return { identifier, found: true, message: "DOI found in URL." };
+    } else if (
+        /(semanticscholar\.org|arxiv\.org|aclweb\.org|acm\.org|biorxiv\.org)/i.test(url)
+    ) {
+        identifier = "URL:" + url;
+        return { identifier, found: true, message: "Accepted website found in URL." };
+    } else {
+        try {
+            const hrefArray = await chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                files: ['scripts/content.js']
+            });
+
+            if (hrefArray && hrefArray.length > 0 && hrefArray[0].result) {
+                const href = hrefArray[0].result;
+                console.log("Content script found link:", href);
+                const linkDoiMatch = href.match(doiRegex);
+                if (linkDoiMatch) {
+                    identifier = "DOI:" + linkDoiMatch[0];
+                    return { identifier, found: true, message: "DOI found in page links." };
+                }
+            } else {
+                console.log("Content script did not find a DOI link.");
+            }
+        } catch (error) {
+            console.error("Error executing content script:", error);
+            return { identifier: null, found: false, message: "Something went wrong." };
+
         }
     }
-    return identifier;
+    if (identifier) {
+        return { identifier, found: true, message: "Identifier found." };
+    } else {
+        return { identifier: null, found: false, message: "No identifier found in URL or page links." };
+    }
 }
 
 summarizeButton.addEventListener("click", async () => {
@@ -228,16 +235,15 @@ summarizeButton.addEventListener("click", async () => {
         return;
     }
 
-    const identifier = getPaperIdentifier(tab.url);
-    if (!identifier) {
+    const identifierResult = await extractPaperIdentifierFromUrl(tab.url, tab.id); // Correctly define identifierResult
+    if (!identifierResult.found) {
         outputDiv.textContent =
-            'Could not identify a paper on this page. If you have the PDF open, please ensure the URL ends with ".pdf".';
+            `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
         return;
     }
 
-    outputDiv.textContent = `Found paper identifier: ${identifier}. Searching for PDF link...`;
-    const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifier}?fields=openAccessPdf`;
-
+    outputDiv.textContent = `Found paper identifier: ${identifierResult.identifier}. Searching for PDF link...`;
+    const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifierResult.identifier}?fields=openAccessPdf`;
     try {
         const ssResponse = await fetch(semanticScholarUrl);
         const ssData = await ssResponse.json();
@@ -247,7 +253,7 @@ summarizeButton.addEventListener("click", async () => {
             throw new Error("No Open Access PDF link found via Semantic Scholar.");
         }
 
-        // sanatize url
+        // sanitize url
         outputDiv.textContent = "Found a potential PDF link. ";
         const link = document.createElement("a");
         link.href = pdfUrl;
