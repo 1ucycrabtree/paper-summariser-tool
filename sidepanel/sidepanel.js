@@ -141,7 +141,6 @@ async function parsePdfBlob(pdfBlob) {
         const typedArray = new Uint8Array(arrayBuffer);
 
         const pdf = await pdfjsLib.getDocument(typedArray).promise;
-        // Parallelize page text extraction for better performance
         const pagePromises = [];
         for (let i = 1; i <= pdf.numPages; i++) {
             pagePromises.push(pdf.getPage(i).then((page) => page.getTextContent()));
