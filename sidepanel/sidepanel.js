@@ -127,6 +127,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 } else {
                     status.textContent = "API key saved.";
                     console.log("Gemini API key saved.");
+                    setApiKeyFormVisibility(false);
                 }
             });
         } else {

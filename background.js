@@ -1,3 +1,5 @@
+import { GoogleGenAI } from "@google/genai";
+
 chrome.action.onClicked.addListener(async (tab) => {
     if (chrome.sidePanel && typeof chrome.sidePanel.open === "function") {
         try {
@@ -21,7 +23,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "generateSummary") {
         (async () => {
             const model = await determineModel();
-            generateSummaryStream(request.file, model);
+            await generateSummaryStream(request.file, model);
         })();
         return true;
     }
@@ -134,55 +136,90 @@ async function generateSummaryStream(text, model = Models.api) {
             session = await LanguageModel.create({
                 initialPrompt: "You are a highly skilled academic research assistant.",
             });
+            const textChunks = splitTextIntoChunks(text);
+            const chunkUpdates = await processTextChunks(session, textChunks);
+            const combinedUpdates = chunkUpdates.join("\n\n");
+
+            const finalPrompt = `You are a highly skilled academic research assistant. The following are the key findings and updates extracted sequentially from a paper.
+
+            Your task is to synthesize these points into a single, cohesive, and concise summary paragraph (no more than 5-6 sentences). Ensure the final output flows naturally.
+
+            KEY INFORMATION:
+            ---
+            ${combinedUpdates}
+            ---
+
+            FINAL SUMMARY:`;
+
+            const finalStream = await session.promptStreaming(finalPrompt);
+
+            for await (const chunk of finalStream) {
+                chrome.runtime.sendMessage({
+                    action: "finalSummaryChunkReceived",
+                    chunk: chunk,
+                });
+            }
+
+            chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
+            session.destroy();
+
         } else if (model === Models.api) {
-            // issues with importing GeminiDev directly here, so delegate to gemini-handler.js
-            chrome.runtime.sendMessage(
-                { action: "createGeminiSession", text },
-                (response) => {
-                    if (chrome.runtime.lastError) {
-                        console.error("Runtime error:", chrome.runtime.lastError.message);
-                        chrome.runtime.sendMessage({ action: "aiError", error: chrome.runtime.lastError.message });
-                        return;
-                    }
-                    if (response?.error) {
-                        console.error("Error from Gemini script:", response.error);
-                        chrome.runtime.sendMessage({ action: "aiError", error: response.error });
-                    }
-                }
-            );
-            return;
+            const apiKey = await chrome.storage.local
+                .get("geminiApiKey")
+                .then((res) => res.geminiApiKey);
+            if (!apiKey) {
+                console.error("Gemini API key not set.");
+                chrome.runtime.sendMessage({
+                    action: "aiError",
+                    error: "Gemini API key not set.",
+                });
+                return;
+            }
+
+            const ai = new GoogleGenAI({ apiKey: apiKey });
+
+            const geminiPrompt = `You are a highly skilled academic research assistant.
+
+             Your task is to summarize the following text into a critical summary including new, critical information (arguments, findings, limitations, methodology, etc).
+             It should be a paragraph (no more than 5-6 sentences). Ensure the final output flows naturally.
+
+            ACADEMIC PAPER TEXT:
+            ---
+            ${text}
+            ---
+
+            SUMMARY:`;
+
+            const responseStream = await ai.models.generateContentStream({
+                model: "gemini-2.5-flash-lite",
+                systemInstruction: "You are a helpful assistant that summarizes academic papers.",
+                contents: [{
+                    role: "user",
+                    parts: [{
+                        text: geminiPrompt
+                    }]
+                }],
+            });
+
+            for await (const chunk of responseStream) {
+                const chunkText = typeof chunk.text === "function" ? chunk.text() : chunk.text;
+                chrome.runtime.sendMessage({
+                    action: "finalSummaryChunkReceived",
+                    chunk: chunkText,
+                });
+            }
+
+            chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
+            console.log("Gemini session completed successfully.");
+
         } else {
             console.error("Error initializing session with model:", model);
             chrome.runtime.sendMessage({ action: "aiError", error: "Error initializing model session." });
             return;
         }
 
-        const textChunks = splitTextIntoChunks(text);
-        const chunkUpdates = await processTextChunks(session, textChunks);
-        const combinedUpdates = chunkUpdates.join("\n\n");
-
-        const finalPrompt = `You are a highly skilled academic research assistant. The following are the key findings and updates extracted sequentially from a paper.
-
-        Your task is to synthesize these points into a single, cohesive, and concise summary paragraph (no more than 5-6 sentences). Ensure the final output flows naturally.
-
-        KEY INFORMATION:
-        ---
-        ${combinedUpdates}
-        ---
-
-        FINAL SUMMARY:`;
-
-        const finalStream = await session.promptStreaming(finalPrompt);
-
-        for await (const chunk of finalStream) {
-            chrome.runtime.sendMessage({
-                action: "finalSummaryChunkReceived",
-                chunk: chunk,
-            });
-        }
-
-        chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
-        session.destroy();
+        // TODO: handle errors better
+        // example - An error occurred: {"error":{"message":"{\n \"error\": {\n \"code\": 400,\n \"message\": \"API key not valid. Please pass a valid API key.\",\n \"status\": \"INVALID_ARGUMENT\",\n \"details\": [\n {\n \"@type\": \"type.googleapis.com/google.rpc.ErrorInfo\",\n \"reason\": \"API_KEY_INVALID\",\n \"domain\": \"googleapis.com\",\n \"metadata\": {\n \"service\": \"generativelanguage.googleapis.com\"\n }\n },\n {\n \"@type\": \"type.googleapis.com/google.rpc.LocalizedMessage\",\n \"locale\": \"en-US\",\n \"message\": \"API key not valid. Please pass a valid API key.\"\n }\n ]\n }\n}\n","code":400,"status":""}}
     } catch (error) {
         console.error("Error during AI summary generation:", error);
         chrome.runtime.sendMessage({ action: "aiError", error: error.message });

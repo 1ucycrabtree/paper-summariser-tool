@@ -6,8 +6,7 @@
   "permissions": ["sidePanel", "activeTab", "scripting", "storage", "tabs"],
   "host_permissions": ["https://api.semanticscholar.org/", "<all_urls>"],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "dist/background.bundle.js"
   },
   "action": {
     "default_title": "Summariser Tool"
