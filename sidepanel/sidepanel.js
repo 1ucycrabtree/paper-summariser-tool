@@ -356,6 +356,14 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         outputDiv.textContent += request.chunk;
     }
 
+    if (request.action === "finalSummaryChunkReceived") {
+        if (isFirstChunk) {
+            outputDiv.textContent = "";
+            isFirstChunk = false;
+        }
+        outputDiv.textContent += request.chunk;
+    }
+
     else if (request.action === "summaryStreamEnded") {
         console.log("Summary stream finished.");
         isFirstChunk = true;

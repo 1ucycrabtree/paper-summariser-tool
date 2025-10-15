@@ -14,38 +14,25 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "generateSummary") {
-        const tabId = request.tabId;
-        const articleText = request.file;
-
-        generateSummaryStream(articleText, tabId);
+        generateSummaryStream(request.file);
         return true;
     }
 });
 
-async function generateSummaryStream(text, tabId) {
+async function generateSummaryStream(text) {
     try {
         const availability = await LanguageModel.availability();
-        if (!availability) {
+        if (availability !== "available") {
             console.error("LanguageModel is not available.");
-            chrome.runtime.sendMessage({
-                action: "aiError",
-                error: "LanguageModel not available.",
-            });
+            chrome.runtime.sendMessage({ action: "aiError", error: "LanguageModel not available." });
             return;
         }
 
         const session = await LanguageModel.create({
             initialPrompt: "You are a highly skilled academic research assistant.",
-            expectedInputs: [{ type: "text", languages: ["en"] }],
-            expectedOutputs: [{ type: "text", languages: ["en"] }],
-            monitor(m) {
-                m.addEventListener("downloadprogress", (e) => {
-                    console.log(`Downloaded ${e.loaded * 100}%`);
-                });
-            },
         });
 
-        function splitTextIntoChunks(text, chunkSize = 2000) {
+        function splitTextIntoChunks(text, chunkSize = 3000) {
             const chunks = [];
             for (let i = 0; i < text.length; i += chunkSize) {
                 chunks.push(text.substring(i, i + chunkSize));
@@ -53,66 +40,61 @@ async function generateSummaryStream(text, tabId) {
             return chunks;
         }
 
-        const schema = {
-            type: "object",
-            properties: {
-                summary: { type: "string" },
-            },
-            required: ["summary"],
-        };
-
         const textChunks = splitTextIntoChunks(text);
-        const chunkSummaries = [];
+        const chunkUpdates = [];
+        let runningSummary = "";
 
         for (const chunk of textChunks) {
-            const prompt = `Analyze the following section of academic text and extract only the most critical information.
+            const prompt = `You are a text analysis assistant. Your task is to identify and extract only new information.
 
-            Present the information as a list of 2-5 bullet points.
+            Here is the summary of the document so far:
+            ---
+            ${runningSummary || "No summary has been generated yet."}
+            ---
 
-            ACADEMIC TEXT:
+            Now, analyze the following new text section. If it contains any new, critical information (arguments, findings, limitations, methodology, etc) not already present in the summary above, extract that new information as 2-3 brief bullet points.
+
+            If this section only repeats or elaborates on information already covered, respond with the exact phrase "No new information."
+
+            NEW TEXT SECTION:
             ---
             ${chunk}
             ---
 
-            SUMMARY:`;
+            UPDATE:`;
 
-            const stream = await session.promptStreaming(prompt, {
-                responseConstraint: schema,
-            });
+            const updateText = await session.prompt(prompt);
 
-            let combinedSummary = "";
-            for await (const streamChunk of stream) {
+            if (!updateText.includes("No new information.")) {
+                chunkUpdates.push(updateText);
+                runningSummary += "\n" + updateText;
                 chrome.runtime.sendMessage({
                     action: "summaryChunkReceived",
-                    chunk: streamChunk,
+                    chunk: runningSummary,
                 });
-                combinedSummary += streamChunk;
             }
-            console.log(`${session.inputUsage}/${session.inputQuota}`);
-            chunkSummaries.push(combinedSummary);
         }
+        chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
+        const combinedUpdates = chunkUpdates.join("\n\n");
 
-        const combinedSummaries = chunkSummaries.join("\n\n");
+        const finalPrompt = `You are a highly skilled academic research assistant. The following are the key findings and updates extracted sequentially from a paper.
 
-        const finalPrompt = `You are a highly skilled academic research assistant. The following are key points extracted from a larger academic text. Combine them into a single, cohesive, and very concise summary of the entire text. The final summary should be a brief paragraph, no more than 5 sentences.
+        Your task is to synthesize these points into a single, cohesive, and concise summary paragraph (no more than 5-6 sentences). Ensure the final output flows naturally.
 
-        KEY POINTS:
+        KEY INFORMATION:
         ---
-        ${combinedSummaries}
+        ${combinedUpdates}
         ---
 
         FINAL SUMMARY:`;
 
-        const stream = await session.promptStreaming(finalPrompt, {
-            responseConstraint: schema,
-        });
+        const finalStream = await session.promptStreaming(finalPrompt);
 
-        for await (const chunk of stream) {
+        for await (const chunk of finalStream) {
             chrome.runtime.sendMessage({
-                action: "summaryChunkReceived",
+                action: "finalSummaryChunkReceived",
                 chunk: chunk,
             });
-            console.log(`${session.inputUsage}/${session.inputQuota}`);
         }
 
         chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
