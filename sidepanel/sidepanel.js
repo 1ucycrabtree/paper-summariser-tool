@@ -353,7 +353,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             outputDiv.textContent = "";
             isFirstChunk = false;
         }
-        outputDiv.textContent += request.chunk;
+        outputDiv.textContent = request.chunk;
+        await saveSummarySectionState(sender.tab?.id, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+        });
     }
 
     if (request.action === "finalSummaryChunkReceived") {
@@ -362,11 +365,17 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             isFirstChunk = false;
         }
         outputDiv.textContent += request.chunk;
+        await saveSummarySectionState(sender.tab?.id, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+        });
     }
 
     else if (request.action === "summaryStreamEnded") {
         console.log("Summary stream finished.");
         isFirstChunk = true;
+        await saveSummarySectionState(sender.tab?.id, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+        });
     }
 
     else if (request.action === "aiError") {

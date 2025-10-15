@@ -13,4 +13,4 @@ function findDoiInUrl() {
     }
 }
 
-return findDoiInUrl();
+findDoiInUrl();
