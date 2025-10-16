@@ -125,7 +125,7 @@ async function generateSummaryStream(text, model = Models.api) {
         let session;
         console.log("Generating summary using model:", model);
         if (model === Models.local) {
-            //! this is prompt API should i use Summarizer API?
+            // TODO: evaluate whether to use Summarizer API instead of Prompt API for summary generation
             const availability = await LanguageModel.availability();
             if (availability !== "available") {
                 console.error("LanguageModel is not available.");
