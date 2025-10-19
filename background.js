@@ -202,9 +202,11 @@ async function generateSummaryStream(text, tabId, model = Models.api) {
                 });
             }
 
-            chrome.runtime.sendMessage({ action: "summaryStreamEnded", tabId: tabId });
+            chrome.runtime.sendMessage({
+                action: "summaryStreamEnded",
+                tabId: tabId,
+            });
             session.destroy();
-
         } else if (model === Models.api) {
             const apiKey = await chrome.storage.local
                 .get("geminiApiKey")

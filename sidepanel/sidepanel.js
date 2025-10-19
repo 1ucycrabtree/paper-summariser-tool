@@ -66,9 +66,11 @@ document.addEventListener("DOMContentLoaded", function () {
             const result = await chrome.storage.session.get(`state-${tabId}`);
             const state = result[`state-${tabId}`];
             if (state) {
-                summaryOutputDiv.innerHTML = state.containerContent || "No content available.";
+                summaryOutputDiv.innerHTML =
+                    state.containerContent || "No content available.";
                 if (state.containerState) {
-                    summaryOutputDiv.style.display = state.containerState.display || "block";
+                    summaryOutputDiv.style.display =
+                        state.containerState.display || "block";
                 }
                 if (summarizeButton) {
                     summarizeButton.disabled = state.aiInProgress;
@@ -183,7 +185,6 @@ async function saveSummarySectionState(
     }
 }
 
-
 summarizeButton?.addEventListener("click", async () => {
     if (!summaryOutputDiv) return;
     summaryOutputDiv.textContent = "Analyzing tab...";
@@ -214,7 +215,8 @@ summarizeButton?.addEventListener("click", async () => {
             const parsedText = await parsePdfBlob(pdfBlob);
             summaryOutputDiv.textContent = "Parsing complete. Generating summary...";
             await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-                display: summaryOutputDiv.style.display, aiInProgress: false,
+                display: summaryOutputDiv.style.display,
+                aiInProgress: false,
             });
             streamingStates[tab.id] = { isFirstChunk: true };
             chrome.runtime.sendMessage({
@@ -230,7 +232,8 @@ summarizeButton?.addEventListener("click", async () => {
             summaryOutputDiv.appendChild(spinner);
             if (summarizeButton) summarizeButton.disabled = true;
             await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-                display: summaryOutputDiv.style.display, aiInProgress: true,
+                display: summaryOutputDiv.style.display,
+                aiInProgress: true,
             });
         } catch (error) {
             console.error("Failed to fetch or parse PDF:", error);
@@ -243,7 +246,8 @@ summarizeButton?.addEventListener("click", async () => {
     if (!identifierResult.found) {
         summaryOutputDiv.textContent = `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
         await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-            display: summaryOutputDiv.style.display, aiInProgress: false,
+            display: summaryOutputDiv.style.display,
+            aiInProgress: false,
         });
         return;
     }
@@ -271,13 +275,15 @@ summarizeButton?.addEventListener("click", async () => {
             )
         );
         await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-            display: summaryOutputDiv.style.display, aiInProgress: false,
+            display: summaryOutputDiv.style.display,
+            aiInProgress: false,
         });
     } catch (error) {
         console.error("API call failed:", error);
         summaryOutputDiv.textContent = `Error: ${error.message}`;
         await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-            display: summaryOutputDiv.style.display, aiInProgress: false,
+            display: summaryOutputDiv.style.display,
+            aiInProgress: false,
         });
     }
 });
@@ -299,7 +305,9 @@ async function parsePdfBlob(pdfBlob) {
         return allText;
     } catch (error) {
         console.error("PDF parsing failed:", error);
-        throw new Error("PDF parsing failed. Make sure the current tab contains a valid PDF.");
+        throw new Error(
+            "PDF parsing failed. Make sure the current tab contains a valid PDF."
+        );
     }
 }
 
@@ -377,7 +385,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         state = {
             containerContent: "",
             containerState: { display: "block" },
-            aiInProgress: true
+            aiInProgress: true,
         };
     }
 
@@ -404,7 +412,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         tabStreamState.isFirstChunk = true;
         aiInProgress = false;
 
-        const tempDiv = document.createElement('div');
+        const tempDiv = document.createElement("div");
         tempDiv.innerHTML = state.containerContent;
         const spinner = tempDiv.querySelector(".spinner");
         if (spinner) {
@@ -421,7 +429,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
     if (action === "modelDownloadProgress") {
         if (request.progress > 0 && request.progress < 1) {
-            state.containerContent = `Model downloading! (this may take a while but will only happen once) ${request.progress * 100}%`;
+            state.containerContent = `Model downloading! (this may take a while but will only happen once) ${request.progress * 100
+                }%`;
         }
         aiInProgress = true;
     }
