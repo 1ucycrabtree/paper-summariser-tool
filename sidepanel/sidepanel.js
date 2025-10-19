@@ -7,7 +7,7 @@ let currentTabId = null;
 
 document.addEventListener("DOMContentLoaded", function () {
     const pageTitleContainer = document.getElementById("pageTitleContainer");
-    const outputDiv = document.getElementById("output");
+    const summaryOutputDiv = document.getElementById("summaryOutput");
 
     init();
     setupTabListeners();
@@ -66,20 +66,20 @@ document.addEventListener("DOMContentLoaded", function () {
             const result = await chrome.storage.session.get(`state-${tabId}`);
             const state = result[`state-${tabId}`];
             if (state) {
-                outputDiv.innerHTML = state.containerContent || "No content available.";
+                summaryOutputDiv.innerHTML = state.containerContent || "No content available.";
                 if (state.containerState) {
-                    outputDiv.style.display = state.containerState.display || "block";
+                    summaryOutputDiv.style.display = state.containerState.display || "block";
                 }
                 if (summarizeButton) {
                     summarizeButton.disabled = state.aiInProgress;
                 }
             } else {
-                outputDiv.textContent = "Waiting for user action...";
+                summaryOutputDiv.textContent = "Waiting for user action...";
                 if (summarizeButton) summarizeButton.disabled = false;
             }
         } catch (error) {
             console.error("Error loading tab state:", error);
-            outputDiv.textContent = "Waiting for user action...";
+            summaryOutputDiv.textContent = "Waiting for user action...";
             if (summarizeButton) summarizeButton.disabled = false;
         }
     }
@@ -164,7 +164,9 @@ document
     });
 
 const summarizeButton = document.getElementById("summarizeButton");
-const outputDiv = document.getElementById("output");
+const generateMatrixButton = document.getElementById("generateMatrixButton");
+const summaryOutputDiv = document.getElementById("summaryOutput");
+const matrixOutputDiv = document.getElementById("matrixOutput");
 
 async function saveSummarySectionState(
     tabId,
@@ -181,14 +183,16 @@ async function saveSummarySectionState(
     }
 }
 
-summarizeButton.addEventListener("click", async () => {
-    outputDiv.textContent = "Analyzing tab...";
+
+summarizeButton?.addEventListener("click", async () => {
+    if (!summaryOutputDiv) return;
+    summaryOutputDiv.textContent = "Analyzing tab...";
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     if (!tab?.url) {
-        outputDiv.textContent = "Could not get page information.";
-        await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
-            display: outputDiv.style.display,
+        summaryOutputDiv.textContent = "Could not get page information.";
+        await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
+            display: summaryOutputDiv.style.display,
             aiInProgress: false,
         });
         return;
@@ -196,108 +200,93 @@ summarizeButton.addEventListener("click", async () => {
 
     const url = tab.url.toLowerCase();
     const title = tab.title ? tab.title.toLowerCase() : "";
-
-    // flexible regex to find "pdf" in the URL path or query string (it looks for /pdf, .pdf, ?pdf, or =pdf)
     const pdfInUrlRegex = /[./?=]pdf/i;
-
     const isUrlDirectPdf = url.endsWith(".pdf") || url.startsWith("blob:");
     const isViewerActive = title.endsWith(".pdf");
     const isPdfInUrl = pdfInUrlRegex.test(tab.url);
 
     if (isUrlDirectPdf || isViewerActive || isPdfInUrl) {
-        outputDiv.textContent = "PDF viewer detected. Downloading file...";
-
+        summaryOutputDiv.textContent = "PDF viewer detected. Downloading file...";
         try {
             const pdfResponse = await fetch(tab.url);
             const pdfBlob = await pdfResponse.blob();
-            outputDiv.textContent = "PDF fetched. Parsing...";
+            summaryOutputDiv.textContent = "PDF fetched. Parsing...";
             const parsedText = await parsePdfBlob(pdfBlob);
-
-            outputDiv.textContent = "Parsing complete. Generating summary...";
-            await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
-                display: outputDiv.style.display, aiInProgress: false,
+            summaryOutputDiv.textContent = "Parsing complete. Generating summary...";
+            await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
+                display: summaryOutputDiv.style.display, aiInProgress: false,
             });
-
             streamingStates[tab.id] = { isFirstChunk: true };
             chrome.runtime.sendMessage({
                 action: "generateSummary",
                 file: parsedText,
                 tabId: tab.id,
             });
-
-            outputDiv.textContent = "";
+            summaryOutputDiv.textContent = "Generating summary... ";
             const spinner = document.createElement("div");
             spinner.className = "spinner";
             spinner.setAttribute("role", "status");
             spinner.setAttribute("aria-live", "polite");
-            outputDiv.appendChild(spinner);
-
+            summaryOutputDiv.appendChild(spinner);
             if (summarizeButton) summarizeButton.disabled = true;
-
-            await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
-                display: outputDiv.style.display, aiInProgress: true,
+            await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
+                display: summaryOutputDiv.style.display, aiInProgress: true,
             });
-
         } catch (error) {
             console.error("Failed to fetch or parse PDF:", error);
-            outputDiv.textContent = `Error: ${error.message}`;
+            summaryOutputDiv.textContent = `Error: ${error.message}`;
         }
         return;
     }
 
     const identifierResult = await extractPaperIdentifierFromUrl(tab.url, tab.id);
     if (!identifierResult.found) {
-        outputDiv.textContent = `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
-        await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
-            display: outputDiv.style.display, aiInProgress: false,
+        summaryOutputDiv.textContent = `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
+        await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
+            display: summaryOutputDiv.style.display, aiInProgress: false,
         });
         return;
     }
 
-    outputDiv.textContent = `Found paper identifier: ${identifierResult.identifier}. Searching for PDF link...`;
+    summaryOutputDiv.textContent = `Found paper identifier: ${identifierResult.identifier}. Searching for PDF link...`;
     const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifierResult.identifier}?fields=openAccessPdf`;
     try {
         const ssResponse = await fetch(semanticScholarUrl);
         // TODO: handle rate limiting (429) and other errors
         const ssData = await ssResponse.json();
         const pdfUrl = ssData?.openAccessPdf?.url;
-
         if (!pdfUrl) {
             throw new Error("No Open Access PDF link found via Semantic Scholar.");
         }
-
-        // sanitize url
-        outputDiv.innerHTML = "Found a potential PDF link. ";
+        summaryOutputDiv.innerHTML = "Found a potential PDF link. ";
         const link = document.createElement("a");
         link.href = pdfUrl;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.textContent = "Open this link";
-        outputDiv.appendChild(link);
-        outputDiv.appendChild(
+        summaryOutputDiv.appendChild(link);
+        summaryOutputDiv.appendChild(
             document.createTextNode(
                 ' in a new tab. Once the PDF is visible, click the "Analyze Active Tab" button again.'
             )
         );
-
-        await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
-            display: outputDiv.style.display, aiInProgress: false,
+        await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
+            display: summaryOutputDiv.style.display, aiInProgress: false,
         });
     } catch (error) {
         console.error("API call failed:", error);
-        outputDiv.textContent = `Error: ${error.message}`;
-        await saveSummarySectionState(tab.id, outputDiv.innerHTML, {
-            display: outputDiv.style.display, aiInProgress: false,
+        summaryOutputDiv.textContent = `Error: ${error.message}`;
+        await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
+            display: summaryOutputDiv.style.display, aiInProgress: false,
         });
     }
 });
 
 async function parsePdfBlob(pdfBlob) {
     try {
-        outputDiv.textContent = "Parsing PDF...";
+        if (summaryOutputDiv) summaryOutputDiv.textContent = "Parsing PDF...";
         const arrayBuffer = await pdfBlob.arrayBuffer();
         const typedArray = new Uint8Array(arrayBuffer);
-
         const pdf = await pdfjsLib.getDocument(typedArray).promise;
         const pagePromises = [];
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -447,7 +436,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     );
 
     if (tabId === currentTabId) {
-        outputDiv.innerHTML = state.containerContent;
+        summaryOutputDiv.innerHTML = state.containerContent;
         if (summarizeButton) {
             summarizeButton.disabled = state.aiInProgress;
         }
