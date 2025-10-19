@@ -45,77 +45,110 @@ async function getUserHardwareSpecs() {
     };
 
     let sufficientHardware = false;
-    if (gpuInfo.gpu && gpuInfo.limits && typeof gpuInfo.limits.maxBufferSize === "number") {
+    if (
+        gpuInfo.gpu &&
+        gpuInfo.limits &&
+        typeof gpuInfo.limits.maxBufferSize === "number"
+    ) {
         if (gpuInfo.limits.maxBufferSize >= 4 * 1024 * 1024 * 1024) {
             sufficientHardware = true;
         }
     }
 
-    const vramGB = (gpuInfo.limits && typeof gpuInfo.limits.maxBufferSize === "number")
-        ? gpuInfo.limits.maxBufferSize / (1024 * 1024 * 1024)
-        : 0;
+    const vramGB =
+        gpuInfo.limits && typeof gpuInfo.limits.maxBufferSize === "number"
+            ? gpuInfo.limits.maxBufferSize / (1024 * 1024 * 1024)
+            : 0;
 
     return { sufficientHardware, vramGB };
 }
 
-async function processTextChunks(session, textChunks) {
+async function processTextChunks(session, textChunks, concurrency = 3) {
     const chunkUpdates = [];
     let runningSummary = "";
 
-    for (const chunk of textChunks) {
-        const prompt = `You are a text analysis assistant. Your task is to identify and extract only new information.
+    for (let i = 0; i < textChunks.length; i += concurrency) {
+        const batch = textChunks.slice(i, i + concurrency);
 
-        Here is the summary of the document so far:
-        ---
-        ${runningSummary || "No summary has been generated yet."}
-        ---
+        const promptPromises = batch.map((chunk) => {
+            const prompt = `You are a text analysis assistant. Your task is to identify and extract only new information.
 
-        Now, analyze the following new text section. If it contains any new, critical information (arguments, findings, limitations, methodology, etc) not already present in the summary above, extract that new information as 2-3 brief bullet points.
+Here is the summary of the document so far:
+---
+${runningSummary || "No summary has been generated yet."}
+---
 
-        If this section only repeats or elaborates on information already covered, respond with the exact phrase "No new information."
+Now, analyze the following new text section. If it contains any new, critical information (arguments, findings, limitations, methodology, etc) not already present in the summary above, extract that new information as 2-3 brief bullet points.
 
-        NEW TEXT SECTION:
-        ---
-        ${chunk}
-        ---
+If this section only repeats or elaborates on information already covered, respond with the exact phrase "No new information."
 
-        UPDATE:`;
+NEW TEXT SECTION:
+---
+${chunk}
+---
 
-        const updateText = await session.prompt(prompt);
+UPDATE:`;
 
-        if (!updateText.includes("No new information.")) {
-            chunkUpdates.push(updateText);
-            runningSummary += "\n" + updateText;
-            chrome.runtime.sendMessage({
-                action: "summaryChunkReceived",
-                chunk: runningSummary,
-            });
+            return session
+                .prompt(prompt)
+                .then((updateText) => ({ success: true, updateText }))
+                .catch((err) => {
+                    console.error("Chunk analysis failed:", err);
+                    return { success: false, updateText: "No new information." };
+                });
+        });
+
+        const results = await Promise.all(promptPromises);
+
+        for (const res of results) {
+            const updateText = res.updateText || "";
+            if (!updateText.includes("No new information.")) {
+                chunkUpdates.push(updateText);
+                runningSummary += "\n" + updateText;
+                chrome.runtime.sendMessage({
+                    action: "summaryChunkReceived",
+                    chunk: runningSummary
+                });
+            }
         }
     }
+
     chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
     return chunkUpdates;
 }
 
-function splitTextIntoChunks(text, chunkSize = 3000) {
+function splitTextIntoChunks(text, chunkSize = 20000) {
     const chunks = [];
     for (let i = 0; i < text.length; i += chunkSize) {
         chunks.push(text.substring(i, i + chunkSize));
     }
+    console.log(`Text split into ${chunks.length} chunks.`);
     return chunks;
 }
 async function determineModel() {
     const { sufficientHardware, vramGB } = await getUserHardwareSpecs();
 
     if (!sufficientHardware) {
-        console.warn(`Insufficient GPU VRAM (${vramGB.toFixed(2)} GB). Need at least 4 GB VRAM, falling back to Gemini dev API.`);
+        console.warn(
+            `Insufficient GPU VRAM (${vramGB.toFixed(
+                2
+            )} GB). Need at least 4 GB VRAM, falling back to Gemini dev API.`
+        );
         return Models.api;
     }
     if (vramGB >= 4) {
-        console.log(`Sufficient GPU VRAM detected (${vramGB.toFixed(2)} GB). Using local LanguageModel.`);
+        console.log(
+            `Sufficient GPU VRAM detected (${vramGB.toFixed(
+                2
+            )} GB). Using local LanguageModel.`
+        );
         return Models.local;
-    }
-    else {
-        console.warn(`Insufficient GPU VRAM (${vramGB.toFixed(2)} GB). Need at least 4 GB VRAM, falling back to Gemini dev API.`);
+    } else {
+        console.warn(
+            `Insufficient GPU VRAM (${vramGB.toFixed(
+                2
+            )} GB). Need at least 4 GB VRAM, falling back to Gemini dev API.`
+        );
         return Models.api;
     }
 }
@@ -127,15 +160,27 @@ async function generateSummaryStream(text, model = Models.api) {
         if (model === Models.local) {
             // TODO: evaluate whether to use Summarizer API instead of Prompt API for summary generation
             const availability = await LanguageModel.availability();
-            if (availability !== "available") {
+            if (availability == "unavailable") {
                 console.error("LanguageModel is not available.");
-                chrome.runtime.sendMessage({ action: "aiError", error: "LanguageModel not available." });
+                chrome.runtime.sendMessage({
+                    action: "aiError",
+                    error: "LanguageModel not available.",
+                });
                 return;
             }
 
             session = await LanguageModel.create({
                 initialPrompt: "You are a highly skilled academic research assistant.",
+                monitor(m) {
+                    m.addEventListener("downloadprogress", (e) => {
+                        chrome.runtime.sendMessage({
+                            action: "modelDownloadProgress",
+                            progress: e.loaded,
+                        });
+                    });
+                },
             });
+
             const textChunks = splitTextIntoChunks(text);
             const chunkUpdates = await processTextChunks(session, textChunks);
             const combinedUpdates = chunkUpdates.join("\n\n");
@@ -162,7 +207,6 @@ async function generateSummaryStream(text, model = Models.api) {
 
             chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
             session.destroy();
-
         } else if (model === Models.api) {
             const apiKey = await chrome.storage.local
                 .get("geminiApiKey")
@@ -192,17 +236,23 @@ async function generateSummaryStream(text, model = Models.api) {
 
             const responseStream = await ai.models.generateContentStream({
                 model: "gemini-2.5-flash-lite",
-                systemInstruction: "You are a helpful assistant that summarizes academic papers.",
-                contents: [{
-                    role: "user",
-                    parts: [{
-                        text: geminiPrompt
-                    }]
-                }],
+                systemInstruction:
+                    "You are a helpful assistant that summarizes academic papers.",
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            {
+                                text: geminiPrompt,
+                            },
+                        ],
+                    },
+                ],
             });
 
             for await (const chunk of responseStream) {
-                const chunkText = typeof chunk.text === "function" ? chunk.text() : chunk.text;
+                const chunkText =
+                    typeof chunk.text === "function" ? chunk.text() : chunk.text;
                 chrome.runtime.sendMessage({
                     action: "finalSummaryChunkReceived",
                     chunk: chunkText,
@@ -211,10 +261,12 @@ async function generateSummaryStream(text, model = Models.api) {
 
             chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
             console.log("Gemini session completed successfully.");
-
         } else {
             console.error("Error initializing session with model:", model);
-            chrome.runtime.sendMessage({ action: "aiError", error: "Error initializing model session." });
+            chrome.runtime.sendMessage({
+                action: "aiError",
+                error: "Error initializing model session.",
+            });
             return;
         }
 

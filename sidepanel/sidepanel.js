@@ -355,9 +355,6 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             isFirstChunk = false;
         }
         outputDiv.textContent = request.chunk;
-        await saveSummarySectionState(sender.tab?.id, outputDiv.innerHTML, {
-            display: outputDiv.style.display,
-        });
     }
 
     if (request.action === "finalSummaryChunkReceived") {
@@ -365,24 +362,23 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             outputDiv.textContent = "";
             isFirstChunk = false;
         }
+
         outputDiv.textContent += request.chunk;
-        await saveSummarySectionState(sender.tab?.id, outputDiv.innerHTML, {
-            display: outputDiv.style.display,
-        });
     }
 
-    else if (request.action === "summaryStreamEnded") {
+    if (request.action === "summaryStreamEnded") {
         console.log("Summary stream finished.");
         isFirstChunk = true;
-        await saveSummarySectionState(sender.tab?.id, outputDiv.innerHTML, {
-            display: outputDiv.style.display,
-        });
     }
-
-    else if (request.action === "aiError") {
+    if (request.action === "aiError") {
         outputDiv.textContent = `An error occurred: ${request.error}`;
         isFirstChunk = true;
     }
+
+    if (request.action === "modelDownloadProgress") {
+        outputDiv.textContent = `Model downloading! (this may take a while but will only happen once) ${request.progress * 100}%`;
+    }
+
     await saveSummarySectionState(sender.tab?.id, outputDiv.innerHTML, {
         display: outputDiv.style.display,
     });
