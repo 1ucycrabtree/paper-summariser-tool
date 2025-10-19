@@ -23,7 +23,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "generateSummary") {
         (async () => {
             const model = await determineModel();
-            await generateSummaryStream(request.file, model);
+            await generateSummaryStream(request.file, request.tabId, model);
         })();
         return true;
     }
@@ -73,21 +73,21 @@ async function processTextChunks(session, textChunks, concurrency = 3) {
         const promptPromises = batch.map((chunk) => {
             const prompt = `You are a text analysis assistant. Your task is to identify and extract only new information.
 
-Here is the summary of the document so far:
----
-${runningSummary || "No summary has been generated yet."}
----
+                Here is the summary of the document so far:
+                ---
+                ${runningSummary || "No summary has been generated yet."}
+                ---
 
-Now, analyze the following new text section. If it contains any new, critical information (arguments, findings, limitations, methodology, etc) not already present in the summary above, extract that new information as 2-3 brief bullet points.
+                Now, analyze the following new text section. If it contains any new, critical information (arguments, findings, limitations, methodology, etc) not already present in the summary above, extract that new information as 2-3 brief bullet points.
 
-If this section only repeats or elaborates on information already covered, respond with the exact phrase "No new information."
+                If this section only repeats or elaborates on information already covered, respond with the exact phrase "No new information."
 
-NEW TEXT SECTION:
----
-${chunk}
----
+                NEW TEXT SECTION:
+                ---
+                ${chunk}
+                ---
 
-UPDATE:`;
+                UPDATE:`;
 
             return session
                 .prompt(prompt)
@@ -105,15 +105,9 @@ UPDATE:`;
             if (!updateText.includes("No new information.")) {
                 chunkUpdates.push(updateText);
                 runningSummary += "\n" + updateText;
-                chrome.runtime.sendMessage({
-                    action: "summaryChunkReceived",
-                    chunk: runningSummary
-                });
             }
         }
     }
-
-    chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
     return chunkUpdates;
 }
 
@@ -153,7 +147,7 @@ async function determineModel() {
     }
 }
 
-async function generateSummaryStream(text, model = Models.api) {
+async function generateSummaryStream(text, tabId, model = Models.api) {
     try {
         let session;
         console.log("Generating summary using model:", model);
@@ -165,6 +159,7 @@ async function generateSummaryStream(text, model = Models.api) {
                 chrome.runtime.sendMessage({
                     action: "aiError",
                     error: "LanguageModel not available.",
+                    tabId: tabId,
                 });
                 return;
             }
@@ -176,6 +171,7 @@ async function generateSummaryStream(text, model = Models.api) {
                         chrome.runtime.sendMessage({
                             action: "modelDownloadProgress",
                             progress: e.loaded,
+                            tabId: tabId,
                         });
                     });
                 },
@@ -202,11 +198,13 @@ async function generateSummaryStream(text, model = Models.api) {
                 chrome.runtime.sendMessage({
                     action: "finalSummaryChunkReceived",
                     chunk: chunk,
+                    tabId: tabId,
                 });
             }
 
-            chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
+            chrome.runtime.sendMessage({ action: "summaryStreamEnded", tabId: tabId });
             session.destroy();
+
         } else if (model === Models.api) {
             const apiKey = await chrome.storage.local
                 .get("geminiApiKey")
@@ -216,6 +214,7 @@ async function generateSummaryStream(text, model = Models.api) {
                 chrome.runtime.sendMessage({
                     action: "aiError",
                     error: "Gemini API key not set.",
+                    tabId: tabId,
                 });
                 return;
             }
@@ -256,16 +255,21 @@ async function generateSummaryStream(text, model = Models.api) {
                 chrome.runtime.sendMessage({
                     action: "finalSummaryChunkReceived",
                     chunk: chunkText,
+                    tabId: tabId,
                 });
             }
 
-            chrome.runtime.sendMessage({ action: "summaryStreamEnded" });
+            chrome.runtime.sendMessage({
+                action: "summaryStreamEnded",
+                tabId: tabId,
+            });
             console.log("Gemini session completed successfully.");
         } else {
             console.error("Error initializing session with model:", model);
             chrome.runtime.sendMessage({
                 action: "aiError",
                 error: "Error initializing model session.",
+                tabId: tabId,
             });
             return;
         }
@@ -274,6 +278,10 @@ async function generateSummaryStream(text, model = Models.api) {
         // example - An error occurred: {"error":{"message":"{\n \"error\": {\n \"code\": 400,\n \"message\": \"API key not valid. Please pass a valid API key.\",\n \"status\": \"INVALID_ARGUMENT\",\n \"details\": [\n {\n \"@type\": \"type.googleapis.com/google.rpc.ErrorInfo\",\n \"reason\": \"API_KEY_INVALID\",\n \"domain\": \"googleapis.com\",\n \"metadata\": {\n \"service\": \"generativelanguage.googleapis.com\"\n }\n },\n {\n \"@type\": \"type.googleapis.com/google.rpc.LocalizedMessage\",\n \"locale\": \"en-US\",\n \"message\": \"API key not valid. Please pass a valid API key.\"\n }\n ]\n }\n}\n","code":400,"status":""}}
     } catch (error) {
         console.error("Error during AI summary generation:", error);
-        chrome.runtime.sendMessage({ action: "aiError", error: error.message });
+        chrome.runtime.sendMessage({
+            action: "aiError",
+            error: error.message,
+            tabId: tabId,
+        });
     }
 }
