@@ -1,5 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
-import { Models, Config, MessageActions } from "./constants.js";
+import { Models, Config } from "./constants.js";
+import { getUserHardwareSpecs } from "./utils/hardware.js";
+import { splitTextIntoChunks, processTextChunks } from "./utils/textProcessing.js";
+import { sendError, sendDownloadProgress, sendSummaryChunk, sendStreamEnded } from "./utils/messaging.js";
 
 // define LanguageModel to stop no-undef ESLint error
 let LanguageModel;
@@ -27,96 +30,6 @@ chrome.runtime.onMessage.addListener((request) => {
     }
 });
 
-async function getUserHardwareSpecs() {
-    if (!navigator.gpu) {
-        return { sufficientHardware: false, vramGB: 0 };
-    }
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-        return { sufficientHardware: false, vramGB: 0 };
-    }
-    const gpuInfo = {
-        gpu: true,
-        name: adapter.name,
-        features: Array.from(adapter.features),
-        limits: adapter.limits,
-    };
-
-    let sufficientHardware = false;
-    if (
-        gpuInfo.gpu &&
-        gpuInfo.limits &&
-        typeof gpuInfo.limits.maxBufferSize === "number"
-    ) {
-        if (gpuInfo.limits.maxBufferSize >= Config.MIN_VRAM_B) {
-            sufficientHardware = true;
-        }
-    }
-
-    const vramGB =
-        gpuInfo.limits && typeof gpuInfo.limits.maxBufferSize === "number"
-            ? gpuInfo.limits.maxBufferSize / (1024 * 1024 * 1024)
-            : 0;
-
-    return { sufficientHardware, vramGB };
-}
-
-async function processTextChunks(session, textChunks, concurrency = Config.CHUNK_CONCURRENCY) {
-    const chunkUpdates = [];
-    let runningSummary = "";
-
-    for (let i = 0; i < textChunks.length; i += concurrency) {
-        const batch = textChunks.slice(i, i + concurrency);
-
-        const promptPromises = batch.map((chunk) => {
-            const prompt = `You are a text analysis assistant. Your task is to identify and extract only new information.
-
-                Here is the summary of the document so far:
-                ---
-                ${runningSummary || "No summary has been generated yet."}
-                ---
-
-                Now, analyze the following new text section. If it contains any new, critical information (arguments, findings, limitations, methodology, etc) not already present in the summary above, extract that new information as 2-3 brief bullet points.
-
-                If this section only repeats or elaborates on information already covered, respond with the exact phrase "No new information."
-
-                NEW TEXT SECTION:
-                ---
-                ${chunk}
-                ---
-
-                UPDATE:`;
-
-            return session
-                .prompt(prompt)
-                .then((updateText) => ({ success: true, updateText }))
-                .catch((err) => {
-                    console.error("Chunk analysis failed:", err);
-                    return { success: false, updateText: "No new information." };
-                });
-        });
-
-        const results = await Promise.all(promptPromises);
-
-        for (const res of results) {
-            const updateText = res.updateText || "";
-            if (!updateText.includes("No new information.")) {
-                chunkUpdates.push(updateText);
-                runningSummary += "\n" + updateText;
-            }
-        }
-    }
-    return chunkUpdates;
-}
-
-function splitTextIntoChunks(text, chunkSize = Config.CHUNK_SIZE) {
-    const chunks = [];
-    for (let i = 0; i < text.length; i += chunkSize) {
-        chunks.push(text.substring(i, i + chunkSize));
-    }
-    console.log(`Text split into ${chunks.length} chunks.`);
-    return chunks;
-}
 async function determineModel() {
     const { sufficientHardware, vramGB } = await getUserHardwareSpecs();
 
@@ -152,11 +65,7 @@ async function generateSummaryStream(text, tabId, model = Models.API) {
             const availability = await LanguageModel.availability();
             if (availability == "unavailable") {
                 console.error("LanguageModel is not available.");
-                chrome.runtime.sendMessage({
-                    action: MessageActions.AI_ERROR,
-                    error: "LanguageModel not available.",
-                    tabId: tabId,
-                });
+                sendError(tabId, "LanguageModel not available.");
                 return;
             }
 
@@ -164,11 +73,7 @@ async function generateSummaryStream(text, tabId, model = Models.API) {
                 initialPrompt: "You are a highly skilled academic research assistant.",
                 monitor(m) {
                     m.addEventListener("downloadprogress", (e) => {
-                        chrome.runtime.sendMessage({
-                            action: MessageActions.MODEL_DOWNLOAD_PROGRESS,
-                            progress: e.loaded,
-                            tabId: tabId,
-                        });
+                        sendDownloadProgress(tabId, e.loaded);
                     });
                 },
             });
@@ -191,28 +96,17 @@ async function generateSummaryStream(text, tabId, model = Models.API) {
             const finalStream = await session.promptStreaming(finalPrompt);
 
             for await (const chunk of finalStream) {
-                chrome.runtime.sendMessage({
-                    action: MessageActions.SUMMARY_CHUNK_RECEIVED,
-                    chunk: chunk,
-                    tabId: tabId,
-                });
+                sendSummaryChunk(tabId, chunk);
             }
 
-            chrome.runtime.sendMessage({
-                action: MessageActions.SUMMARY_STREAM_ENDED,
-                tabId: tabId,
-            });
+            sendStreamEnded(tabId);
         } else if (model === Models.API) {
             const apiKey = await chrome.storage.local
                 .get("geminiApiKey")
                 .then((res) => res.geminiApiKey);
             if (!apiKey) {
                 console.error("Gemini API key not set.");
-                chrome.runtime.sendMessage({
-                    action: MessageActions.AI_ERROR,
-                    error: "Gemini API key not set.",
-                    tabId: tabId,
-                });
+                sendError(tabId, "Gemini API key not set.");
                 return;
             }
 
@@ -249,25 +143,14 @@ async function generateSummaryStream(text, tabId, model = Models.API) {
             for await (const chunk of responseStream) {
                 const chunkText =
                     typeof chunk.text === "function" ? chunk.text() : chunk.text;
-                chrome.runtime.sendMessage({
-                    action: MessageActions.SUMMARY_CHUNK_RECEIVED,
-                    chunk: chunkText,
-                    tabId: tabId,
-                });
+                sendSummaryChunk(tabId, chunkText);
             }
 
-            chrome.runtime.sendMessage({
-                action: MessageActions.SUMMARY_STREAM_ENDED,
-                tabId: tabId,
-            });
+            sendStreamEnded(tabId);
             console.log("Gemini session completed successfully.");
         } else {
             console.error("Error initializing session with model:", model);
-            chrome.runtime.sendMessage({
-                action: MessageActions.AI_ERROR,
-                error: "Error initializing model session.",
-                tabId: tabId,
-            });
+            sendError(tabId, "Error initializing model session.");
             return;
         }
 
@@ -275,10 +158,6 @@ async function generateSummaryStream(text, tabId, model = Models.API) {
         // example - An error occurred: {"error":{"message":"{\n \"error\": {\n \"code\": 400,\n \"message\": \"API key not valid. Please pass a valid API key.\",\n \"status\": \"INVALID_ARGUMENT\",\n \"details\": [\n {\n \"@type\": \"type.googleapis.com/google.rpc.ErrorInfo\",\n \"reason\": \"API_KEY_INVALID\",\n \"domain\": \"googleapis.com\",\n \"metadata\": {\n \"service\": \"generativelanguage.googleapis.com\"\n }\n },\n {\n \"@type\": \"type.googleapis.com/google.rpc.LocalizedMessage\",\n \"locale\": \"en-US\",\n \"message\": \"API key not valid. Please pass a valid API key.\"\n }\n ]\n }\n}\n","code":400,"status":""}}
     } catch (error) {
         console.error("Error during AI summary generation:", error);
-        chrome.runtime.sendMessage({
-            action: MessageActions.AI_ERROR,
-            error: error.message,
-            tabId: tabId,
-        });
+        sendError(tabId, error.message);
     }
 }
