@@ -1,5 +1,5 @@
 import * as pdfjsLib from "../scripts/pdf.mjs";
-import { MessageActions } from "../constants";
+import { MessageActions } from "../constants.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "../scripts/pdf.worker.mjs";
 
