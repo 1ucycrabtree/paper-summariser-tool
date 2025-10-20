@@ -1,4 +1,5 @@
 import * as pdfjsLib from "../scripts/pdf.mjs";
+import { MessageActions } from "../constants";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "../scripts/pdf.worker.mjs";
 
@@ -220,7 +221,7 @@ summarizeButton?.addEventListener("click", async () => {
             });
             streamingStates[tab.id] = { isFirstChunk: true };
             chrome.runtime.sendMessage({
-                action: "generateSummary",
+                action: MessageActions.START_SUMMARY,
                 file: parsedText,
                 tabId: tab.id,
             });
@@ -397,7 +398,7 @@ chrome.runtime.onMessage.addListener(async (request) => {
 
     let aiInProgress = state.aiInProgress;
 
-    if (action === "finalSummaryChunkReceived") {
+    if (action === MessageActions.SUMMARY_CHUNK_RECEIVED) {
         if (tabStreamState.isFirstChunk) {
             state.containerContent = request.chunk;
             tabStreamState.isFirstChunk = false;
@@ -407,7 +408,7 @@ chrome.runtime.onMessage.addListener(async (request) => {
         aiInProgress = true;
     }
 
-    if (action === "summaryStreamEnded") {
+    if (action === MessageActions.SUMMARY_STREAM_ENDED) {
         console.log(`Summary stream finished for tab ${tabId}.`);
         tabStreamState.isFirstChunk = true;
         aiInProgress = false;
@@ -421,13 +422,13 @@ chrome.runtime.onMessage.addListener(async (request) => {
         }
     }
 
-    if (action === "aiError") {
+    if (action === MessageActions.AI_ERROR) {
         state.containerContent = `An error occurred: ${request.error}`;
         tabStreamState.isFirstChunk = true;
         aiInProgress = false;
     }
 
-    if (action === "modelDownloadProgress") {
+    if (action === MessageActions.MODEL_DOWNLOAD_PROGRESS) {
         if (request.progress > 0 && request.progress < 1) {
             state.containerContent = `Model downloading! (this may take a while but will only happen once) ${request.progress * 100
             }%`;

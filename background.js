@@ -1,8 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
+import { Models, Config, MessageActions } from "./constants.js";
 
 // define LanguageModel to stop no-undef ESLint error
 let LanguageModel;
-
 
 chrome.action.onClicked.addListener(async (tab) => {
     if (chrome.sidePanel && typeof chrome.sidePanel.open === "function") {
@@ -17,12 +17,6 @@ chrome.action.onClicked.addListener(async (tab) => {
         );
     }
 });
-
-const Models = {
-    local: "Local",
-    api: "API",
-};
-
 chrome.runtime.onMessage.addListener((request) => {
     if (request.action === "generateSummary") {
         (async () => {
@@ -54,7 +48,7 @@ async function getUserHardwareSpecs() {
         gpuInfo.limits &&
         typeof gpuInfo.limits.maxBufferSize === "number"
     ) {
-        if (gpuInfo.limits.maxBufferSize >= 4 * 1024 * 1024 * 1024) {
+        if (gpuInfo.limits.maxBufferSize >= Config.MIN_VRAM_B) {
             sufficientHardware = true;
         }
     }
@@ -67,7 +61,7 @@ async function getUserHardwareSpecs() {
     return { sufficientHardware, vramGB };
 }
 
-async function processTextChunks(session, textChunks, concurrency = 3) {
+async function processTextChunks(session, textChunks, concurrency = Config.CHUNK_CONCURRENCY) {
     const chunkUpdates = [];
     let runningSummary = "";
 
@@ -115,7 +109,7 @@ async function processTextChunks(session, textChunks, concurrency = 3) {
     return chunkUpdates;
 }
 
-function splitTextIntoChunks(text, chunkSize = 20000) {
+function splitTextIntoChunks(text, chunkSize = Config.CHUNK_SIZE) {
     const chunks = [];
     for (let i = 0; i < text.length; i += chunkSize) {
         chunks.push(text.substring(i, i + chunkSize));
@@ -132,36 +126,34 @@ async function determineModel() {
                 2
             )} GB). Need at least 4 GB VRAM, falling back to Gemini dev API.`
         );
-        return Models.api;
+        return Models.API;
     }
-    if (vramGB >= 4) {
+    if (vramGB >= Config.MIN_VRAM_GB) {
         console.log(
             `Sufficient GPU VRAM detected (${vramGB.toFixed(
                 2
             )} GB). Using local LanguageModel.`
         );
-        return Models.local;
+        return Models.LOCAL;
     } else {
         console.warn(
             `Insufficient GPU VRAM (${vramGB.toFixed(
                 2
             )} GB). Need at least 4 GB VRAM, falling back to Gemini dev API.`
         );
-        return Models.api;
+        return Models.API;
     }
 }
-
-async function generateSummaryStream(text, tabId, model = Models.api) {
+async function generateSummaryStream(text, tabId, model = Models.API) {
     try {
         let session;
-        console.log("Generating summary using model:", model);
-        if (model === Models.local) {
+        if (model === Models.LOCAL) {
             // TODO: evaluate whether to use Summarizer API instead of Prompt API for summary generation
             const availability = await LanguageModel.availability();
             if (availability == "unavailable") {
                 console.error("LanguageModel is not available.");
                 chrome.runtime.sendMessage({
-                    action: "aiError",
+                    action: MessageActions.AI_ERROR,
                     error: "LanguageModel not available.",
                     tabId: tabId,
                 });
@@ -173,7 +165,7 @@ async function generateSummaryStream(text, tabId, model = Models.api) {
                 monitor(m) {
                     m.addEventListener("downloadprogress", (e) => {
                         chrome.runtime.sendMessage({
-                            action: "modelDownloadProgress",
+                            action: MessageActions.MODEL_DOWNLOAD_PROGRESS,
                             progress: e.loaded,
                             tabId: tabId,
                         });
@@ -200,25 +192,24 @@ async function generateSummaryStream(text, tabId, model = Models.api) {
 
             for await (const chunk of finalStream) {
                 chrome.runtime.sendMessage({
-                    action: "finalSummaryChunkReceived",
+                    action: MessageActions.SUMMARY_CHUNK_RECEIVED,
                     chunk: chunk,
                     tabId: tabId,
                 });
             }
 
             chrome.runtime.sendMessage({
-                action: "summaryStreamEnded",
+                action: MessageActions.SUMMARY_STREAM_ENDED,
                 tabId: tabId,
             });
-            session.destroy();
-        } else if (model === Models.api) {
+        } else if (model === Models.API) {
             const apiKey = await chrome.storage.local
                 .get("geminiApiKey")
                 .then((res) => res.geminiApiKey);
             if (!apiKey) {
                 console.error("Gemini API key not set.");
                 chrome.runtime.sendMessage({
-                    action: "aiError",
+                    action: MessageActions.AI_ERROR,
                     error: "Gemini API key not set.",
                     tabId: tabId,
                 });
@@ -259,21 +250,21 @@ async function generateSummaryStream(text, tabId, model = Models.api) {
                 const chunkText =
                     typeof chunk.text === "function" ? chunk.text() : chunk.text;
                 chrome.runtime.sendMessage({
-                    action: "finalSummaryChunkReceived",
+                    action: MessageActions.SUMMARY_CHUNK_RECEIVED,
                     chunk: chunkText,
                     tabId: tabId,
                 });
             }
 
             chrome.runtime.sendMessage({
-                action: "summaryStreamEnded",
+                action: MessageActions.SUMMARY_STREAM_ENDED,
                 tabId: tabId,
             });
             console.log("Gemini session completed successfully.");
         } else {
             console.error("Error initializing session with model:", model);
             chrome.runtime.sendMessage({
-                action: "aiError",
+                action: MessageActions.AI_ERROR,
                 error: "Error initializing model session.",
                 tabId: tabId,
             });
@@ -285,7 +276,7 @@ async function generateSummaryStream(text, tabId, model = Models.api) {
     } catch (error) {
         console.error("Error during AI summary generation:", error);
         chrome.runtime.sendMessage({
-            action: "aiError",
+            action: MessageActions.AI_ERROR,
             error: error.message,
             tabId: tabId,
         });
