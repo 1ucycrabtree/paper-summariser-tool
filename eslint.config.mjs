@@ -29,6 +29,10 @@ export default defineConfig([{
     rules: {
         "no-console": 0,
         indent: 2,
+        "no-unused-vars": ["error", { 
+            "argsIgnorePattern": "^_",
+            "varsIgnorePattern": "^_"
+        }],
     },
 },
 {
