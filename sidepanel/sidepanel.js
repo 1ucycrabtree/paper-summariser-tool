@@ -53,7 +53,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         if (chrome.tabs?.onUpdated) {
-            chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+            chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
                 if (tabId === currentTabId && changeInfo.status === "complete") {
                     await loadSummarySectionState(tabId);
                 }
@@ -166,9 +166,9 @@ document
     });
 
 const summarizeButton = document.getElementById("summarizeButton");
-const generateMatrixButton = document.getElementById("generateMatrixButton");
+// const generateMatrixButton = document.getElementById("generateMatrixButton");
 const summaryOutputDiv = document.getElementById("summaryOutput");
-const matrixOutputDiv = document.getElementById("matrixOutput");
+// const matrixOutputDiv = document.getElementById("matrixOutput");
 
 async function saveSummarySectionState(
     tabId,
@@ -373,7 +373,7 @@ async function extractPaperIdentifierFromUrl(url, tabId) {
     }
 }
 
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener(async (request) => {
     const { action, tabId } = request;
     if (!tabId) {
         return;
@@ -430,7 +430,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     if (action === "modelDownloadProgress") {
         if (request.progress > 0 && request.progress < 1) {
             state.containerContent = `Model downloading! (this may take a while but will only happen once) ${request.progress * 100
-                }%`;
+            }%`;
         }
         aiInProgress = true;
     }

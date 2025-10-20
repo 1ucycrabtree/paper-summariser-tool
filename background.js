@@ -1,5 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 
+// define LanguageModel to stop no-undef ESLint error
+let LanguageModel;
+
+
 chrome.action.onClicked.addListener(async (tab) => {
     if (chrome.sidePanel && typeof chrome.sidePanel.open === "function") {
         try {
@@ -19,7 +23,7 @@ const Models = {
     api: "API",
 };
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request) => {
     if (request.action === "generateSummary") {
         (async () => {
             const model = await determineModel();
