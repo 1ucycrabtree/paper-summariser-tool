@@ -2,10 +2,6 @@ import { sendError } from "./utils/messaging.js";
 import { ModelFactory } from "./ai/model-factory.js";
 import { MessageActions } from "./constants.js";
 
-// define LanguageModel and Summarizer to stop no-undef ESLint error
-let LanguageModel;
-let Summarizer;
-
 const modelFactory = new ModelFactory();
 
 chrome.action.onClicked.addListener(async (tab) => {
@@ -21,6 +17,7 @@ chrome.action.onClicked.addListener(async (tab) => {
         );
     }
 });
+
 chrome.runtime.onMessage.addListener((request) => {
     if (request.action === MessageActions.GENERATE_SUMMARY) {
         handleGenerateSummary(request.file, request.tabId);
@@ -28,13 +25,20 @@ chrome.runtime.onMessage.addListener((request) => {
     }
 });
 
+chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === MessageActions.GENERATE_MATRIX) {
+        handleGenerateMatrix(request.file, request.tabId);
+        return true;
+    }
+});
+
 async function handleGenerateSummary(text, tabId) {
     let provider = null;
     try {
-        provider = await modelFactory.createProvider(tabId);
-        await provider.generateSummary(text);
+        provider = await modelFactory.createProvider(tabId,);
+        await provider.generateResponse(text);
     } catch (error) {
-        console.error("Error generating summary:", error);
+        console.error("Error generating response:", error);
         sendError(tabId, error.message);
     }
     finally {

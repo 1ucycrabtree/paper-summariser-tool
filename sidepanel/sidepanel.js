@@ -1,6 +1,11 @@
 import * as pdfjsLib from "../scripts/pdf.mjs";
 import { MessageActions } from "../constants.js";
 
+// TODO: matrix save tab state
+// TODO: fix ainProgress state saving for different sections
+// TODO: refactor common code between summary and matrix sections
+// TODO: only fetch pdf once and share between sections
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = "../scripts/pdf.worker.mjs";
 
 let streamingStates = {};
@@ -167,9 +172,9 @@ document
     });
 
 const summarizeButton = document.getElementById("summarizeButton");
-// const generateMatrixButton = document.getElementById("generateMatrixButton");
+const generateMatrixButton = document.getElementById("generateMatrixButton");
 const summaryOutputDiv = document.getElementById("summaryOutput");
-// const matrixOutputDiv = document.getElementById("matrixOutput");
+const matrixOutputDiv = document.getElementById("matrixOutput");
 
 async function saveSummarySectionState(
     tabId,
@@ -182,6 +187,21 @@ async function saveSummarySectionState(
             [`state-${tabId}`]: { containerContent, containerState, aiInProgress },
         });
     } catch (error) {
+        console.error("Error saving tab state:", error);
+    }
+}
+
+async function saveMatrixSectionState(
+    tabId,
+    containerContent,
+    containerState,
+    aiInProgress
+) {
+    try {
+        console.log(tabId, containerContent, containerState, aiInProgress);
+        //todo  
+    }
+    catch (error) {
         console.error("Error saving tab state:", error);
     }
 }
@@ -289,6 +309,197 @@ summarizeButton?.addEventListener("click", async () => {
     }
 });
 
+generateMatrixButton?.addEventListener("click", async () => {
+    if (!matrixOutputDiv) return;
+    matrixOutputDiv.textContent = "Analyzing tab...";
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab?.url) {
+        matrixOutputDiv.textContent = "Could not get page information.";
+        await saveMatrixSectionState(tab.id, matrixOutputDiv.innerHTML, {
+            display: matrixOutputDiv.style.display,
+            aiInProgress: false,
+        });
+        return;
+    }
+
+    const url = tab.url.toLowerCase();
+    const title = tab.title ? tab.title.toLowerCase() : "";
+    const pdfInUrlRegex = /[./?=]pdf/i;
+    const isUrlDirectPdf = url.endsWith(".pdf") || url.startsWith("blob:");
+    const isViewerActive = title.endsWith(".pdf");
+    const isPdfInUrl = pdfInUrlRegex.test(tab.url);
+
+    if (isUrlDirectPdf || isViewerActive || isPdfInUrl) {
+        matrixOutputDiv.textContent = "PDF viewer detected. Downloading file...";
+        try {
+            const pdfResponse = await fetch(tab.url);
+            const pdfBlob = await pdfResponse.blob();
+            matrixOutputDiv.textContent = "PDF fetched. Parsing...";
+            const parsedText = await parsePdfBlob(pdfBlob);
+            matrixOutputDiv.textContent = "Parsing complete. Generating matrix...";
+            await saveMatrixSectionState(tab.id, matrixOutputDiv.innerHTML, {
+                display: matrixOutputDiv.style.display,
+                aiInProgress: false,
+            });
+            streamingStates[tab.id] = { isFirstChunk: true };
+            chrome.runtime.sendMessage({
+                action: MessageActions.GENERATE_MATRIX,
+                file: parsedText,
+                tabId: tab.id,
+            });
+            matrixOutputDiv.textContent = "Generating matrix... ";
+            const spinner = document.createElement("div");
+            spinner.className = "spinner";
+            spinner.setAttribute("role", "status");
+            spinner.setAttribute("aria-live", "polite");
+            matrixOutputDiv.appendChild(spinner);
+            if (generateMatrixButton) generateMatrixButton.disabled = true;
+            await saveMatrixSectionState(tab.id, matrixOutputDiv.innerHTML, {
+                display: matrixOutputDiv.style.display,
+                aiInProgress: true,
+            });
+        } catch (error) {
+            console.error("Failed to fetch or parse PDF:", error);
+            matrixOutputDiv.textContent = `Error: ${error.message}`;
+        }
+        return;
+    }
+
+    const identifierResult = await extractPaperIdentifierFromUrl(tab.url, tab.id);
+    if (!identifierResult.found) {
+        matrixOutputDiv.textContent = `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
+        await saveMatrixSectionState(tab.id, matrixOutputDiv.innerHTML, {
+            display: matrixOutputDiv.style.display,
+            aiInProgress: false,
+        });
+        return;
+    }
+
+    matrixOutputDiv.textContent = `Found paper identifier: ${identifierResult.identifier}. Searching for PDF link...`;
+    const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifierResult.identifier}?fields=openAccessPdf`;
+    try {
+        const ssResponse = await fetch(semanticScholarUrl);
+        // TODO: handle rate limiting (429) and other errors
+        const ssData = await ssResponse.json();
+        const pdfUrl = ssData?.openAccessPdf?.url;
+        if (!pdfUrl) {
+            throw new Error("No Open Access PDF link found via Semantic Scholar.");
+        }
+        matrixOutputDiv.innerHTML = "Found a potential PDF link. ";
+        const link = document.createElement("a");
+        link.href = pdfUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Open this link";
+        matrixOutputDiv.appendChild(link);
+        matrixOutputDiv.appendChild(
+            document.createTextNode(
+                ' in a new tab. Once the PDF is visible, click the "Analyze Active Tab" button again.'
+            )
+        );
+        await saveMatrixSectionState(tab.id, matrixOutputDiv.innerHTML, {
+            display: matrixOutputDiv.style.display,
+            aiInProgress: false,
+        });
+    } catch (error) {
+        console.error("API call failed:", error);
+        matrixOutputDiv.textContent = `Error: ${error.message}`;
+        await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
+            display: summaryOutputDiv.style.display,
+            aiInProgress: false,
+        });
+    }
+});
+
+chrome.runtime.onMessage.addListener(async (request) => {
+    const { action, tabId } = request;
+    if (!tabId) return;
+
+    const result = await chrome.storage.session.get(`state-${tabId}`);
+    let state = result[`state-${tabId}`] || {
+        containerContent: "",
+        containerState: { display: "block" },
+        aiInProgress: true,
+    };
+
+    let tabStreamState = streamingStates[tabId] || { isFirstChunk: true };
+    streamingStates[tabId] = tabStreamState;
+
+    let aiInProgress = state.aiInProgress;
+
+    switch (action) {
+    case MessageActions.SUMMARY_CHUNK_RECEIVED:
+        ({ state, aiInProgress } = _handleSummaryChunkReceived(request, state, tabStreamState));
+        break;
+    case MessageActions.SUMMARY_STREAM_ENDED:
+        ({ state, aiInProgress } = _handleSummaryStreamEnded(state, tabStreamState, tabId));
+        break;
+    case MessageActions.AI_ERROR:
+        ({ state, aiInProgress } = _handleAiError(request, state, tabStreamState));
+        break;
+    case MessageActions.MODEL_DOWNLOAD_PROGRESS:
+        ({ state, aiInProgress } = _handleModelDownloadProgress(request, state));
+        break;
+    default:
+        break;
+    }
+
+    state.aiInProgress = aiInProgress;
+
+    await saveSummarySectionState(
+        tabId,
+        state.containerContent,
+        state.containerState,
+        state.aiInProgress
+    );
+
+    if (tabId === currentTabId) {
+        summaryOutputDiv.innerHTML = state.containerContent;
+        if (summarizeButton) {
+            summarizeButton.disabled = state.aiInProgress;
+        }
+    }
+});
+
+function _handleSummaryChunkReceived(request, state, tabStreamState) {
+    if (tabStreamState.isFirstChunk) {
+        state.containerContent = request.chunk;
+        tabStreamState.isFirstChunk = false;
+    } else {
+        state.containerContent += request.chunk;
+    }
+    return { state, aiInProgress: true };
+}
+
+function _handleSummaryStreamEnded(state, tabStreamState, tabId) {
+    console.log(`Summary stream finished for tab ${tabId}.`);
+    tabStreamState.isFirstChunk = true;
+    let aiInProgress = false;
+
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = state.containerContent;
+    const spinner = tempDiv.querySelector(".spinner");
+    if (spinner) {
+        spinner.remove();
+        state.containerContent = tempDiv.innerHTML;
+    }
+    return { state, aiInProgress };
+}
+
+function _handleAiError(request, state, tabStreamState) {
+    state.containerContent = `An error occurred: ${request.error}`;
+    tabStreamState.isFirstChunk = true;
+    return { state, aiInProgress: false };
+}
+
+function _handleModelDownloadProgress(request, state) {
+    if (request.progress > 0 && request.progress < 1) {
+        state.containerContent = `Model downloading! (this may take a while but will only happen once) ${request.progress * 100}%`;
+    }
+    return { state, aiInProgress: true };
+}
+
 async function parsePdfBlob(pdfBlob) {
     try {
         if (summaryOutputDiv) summaryOutputDiv.textContent = "Parsing PDF...";
@@ -373,82 +584,3 @@ async function extractPaperIdentifierFromUrl(url, tabId) {
         };
     }
 }
-
-chrome.runtime.onMessage.addListener(async (request) => {
-    const { action, tabId } = request;
-    if (!tabId) {
-        return;
-    }
-    const result = await chrome.storage.session.get(`state-${tabId}`);
-    let state = result[`state-${tabId}`];
-
-    if (!state) {
-        state = {
-            containerContent: "",
-            containerState: { display: "block" },
-            aiInProgress: true,
-        };
-    }
-
-    let tabStreamState = streamingStates[tabId];
-    if (!tabStreamState) {
-        tabStreamState = { isFirstChunk: true };
-        streamingStates[tabId] = tabStreamState;
-    }
-
-    let aiInProgress = state.aiInProgress;
-
-    if (action === MessageActions.SUMMARY_CHUNK_RECEIVED) {
-        if (tabStreamState.isFirstChunk) {
-            state.containerContent = request.chunk;
-            tabStreamState.isFirstChunk = false;
-        } else {
-            state.containerContent += request.chunk;
-        }
-        aiInProgress = true;
-    }
-
-    if (action === MessageActions.SUMMARY_STREAM_ENDED) {
-        console.log(`Summary stream finished for tab ${tabId}.`);
-        tabStreamState.isFirstChunk = true;
-        aiInProgress = false;
-
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = state.containerContent;
-        const spinner = tempDiv.querySelector(".spinner");
-        if (spinner) {
-            spinner.remove();
-            state.containerContent = tempDiv.innerHTML;
-        }
-    }
-
-    if (action === MessageActions.AI_ERROR) {
-        state.containerContent = `An error occurred: ${request.error}`;
-        tabStreamState.isFirstChunk = true;
-        aiInProgress = false;
-    }
-
-    if (action === MessageActions.MODEL_DOWNLOAD_PROGRESS) {
-        if (request.progress > 0 && request.progress < 1) {
-            state.containerContent = `Model downloading! (this may take a while but will only happen once) ${request.progress * 100
-            }%`;
-        }
-        aiInProgress = true;
-    }
-
-    state.aiInProgress = aiInProgress;
-
-    await saveSummarySectionState(
-        tabId,
-        state.containerContent,
-        state.containerState,
-        state.aiInProgress
-    );
-
-    if (tabId === currentTabId) {
-        summaryOutputDiv.innerHTML = state.containerContent;
-        if (summarizeButton) {
-            summarizeButton.disabled = state.aiInProgress;
-        }
-    }
-});

@@ -14,7 +14,7 @@ export class GeminiProvider extends AIProvider {
         return !!this.apiKey;
     }
 
-    async generateSummary(text) {
+    async generateResponse(text) {
         try {
             this.client = new GoogleGenAI({ apiKey: this.apiKey });
 

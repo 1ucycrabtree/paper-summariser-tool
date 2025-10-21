@@ -28,6 +28,7 @@ export class PromptProvider extends AIProvider {
 
     async generateSummary(text) {
         try {
+            // TODO: customize initial prompt to generate matrix format not summary
             this.session = await LanguageModel.create({
                 initialPrompt: "You are a highly skilled academic research assistant.",
                 monitor: (m) => {
