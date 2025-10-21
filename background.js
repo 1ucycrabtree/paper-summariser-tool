@@ -1,6 +1,6 @@
-import { sendError } from "./utils/messaging.js";
-import { ModelFactory } from "./ai/model-factory.js";
-import { MessageActions, Sections } from "../constants.js";
+import { sendError } from "./background/utils/messaging.js";
+import { ModelFactory } from "./background/ai/model-factory.js";
+import { MessageActions, Sections } from "./constants.js";
 
 const modelFactory = new ModelFactory();
 

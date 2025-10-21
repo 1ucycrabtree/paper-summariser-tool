@@ -2,7 +2,7 @@
   "name": "paper-summariser-tool",
   "version": "1.0.0",
   "description": "Summarises and generates a synthesis of an academic resource.",
-  "main": "background/background.js",
+  "main": "background.js",
   "scripts": {
     "build": "webpack"
   },
