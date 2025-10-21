@@ -24,7 +24,7 @@ export class SummaryProvider extends AIProvider {
         }
     }
 
-    async generateSummary(text) {
+    async generateResponse(text) {
         try {
             this.session = await Summarizer.create({
                 sharedContext: "This is an academic article.",

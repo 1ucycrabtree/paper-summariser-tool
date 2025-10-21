@@ -19,3 +19,8 @@ export const MessageActions = {
     SUMMARY_CHUNK_RECEIVED: "finalSummaryChunkReceived",
     SUMMARY_STREAM_ENDED: "summaryStreamEnded",
 };
+
+export const Sections = {
+    SUMMARY: "summary",
+    MATRIX: "matrix",
+};

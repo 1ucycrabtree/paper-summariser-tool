@@ -7,8 +7,8 @@ export class AIProvider {
         throw new Error("Must implement isAvailable()");
     }
 
-    async generateSummary(_text) {
-        throw new Error("Must implement generateSummary()");
+    async generateResponse(_text) {
+        throw new Error("Must implement generateResponse()");
     }
 
     destroy() {

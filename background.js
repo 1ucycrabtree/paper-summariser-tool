@@ -1,6 +1,6 @@
 import { sendError } from "./utils/messaging.js";
 import { ModelFactory } from "./ai/model-factory.js";
-import { MessageActions } from "./constants.js";
+import { MessageActions, Sections } from "./constants.js";
 
 const modelFactory = new ModelFactory();
 
@@ -20,22 +20,22 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 chrome.runtime.onMessage.addListener((request) => {
     if (request.action === MessageActions.GENERATE_SUMMARY) {
-        handleGenerateSummary(request.file, request.tabId);
+        handleResponse(request.file, request.tabId, Sections.SUMMARY);
         return true;
     }
 });
 
 chrome.runtime.onMessage.addListener((request) => {
     if (request.action === MessageActions.GENERATE_MATRIX) {
-        handleGenerateMatrix(request.file, request.tabId);
+        handleResponse(request.file, request.tabId, Sections.MATRIX);
         return true;
     }
 });
 
-async function handleGenerateSummary(text, tabId) {
+async function handleResponse(text, tabId, section) {
     let provider = null;
     try {
-        provider = await modelFactory.createProvider(tabId,);
+        provider = await modelFactory.createProvider(tabId, section);
         await provider.generateResponse(text);
     } catch (error) {
         console.error("Error generating response:", error);

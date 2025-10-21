@@ -1,6 +1,7 @@
-import { Models } from "../constants.js";
+import { Models, Sections } from "../constants.js";
 import { getUserHardwareSpecs } from "../utils/hardware.js";
 import { GeminiProvider } from "./gemini-provider.js";
+import { PromptProvider } from "./prompt-provider.js";
 import { SummaryProvider } from "./summary-provider.js";
 
 export class ModelFactory {
@@ -21,27 +22,29 @@ export class ModelFactory {
         }
     }
 
-    async createProvider(tabId, modelType = null) {
-        if (!modelType) {
-            modelType = await this.determineModelType();
+    async createProvider(tabId, modelPurpose = null) {
+        const modelType = await this.determineModelType();
+
+        let ProviderClass;
+        if (modelPurpose === Sections.SUMMARY) {
+            ProviderClass = SummaryProvider;
+        } else if (modelPurpose === Sections.MATRIX) {
+            ProviderClass = PromptProvider;
+        } else {
+            throw new Error(`Unknown model purpose: ${modelPurpose}`);
         }
 
         if (modelType === Models.LOCAL) {
-            const provider = new SummaryProvider(tabId);
-            const available = await provider.isAvailable();
-            
-            if (!available) {
-                console.warn("LanguageModel unavailable, falling back to Gemini");
-                return this._createGeminiProvider(tabId);
+            const provider = new ProviderClass(tabId);
+            if (await provider.isAvailable()) {
+                return provider;
             }
-            
-            return provider;
-        } else {
-            return this._createGeminiProvider(tabId);
+            console.warn(`${ProviderClass.name} unavailable, falling back to Gemini`);
         }
+        return this.createGeminiProvider(tabId);
     }
 
-    async _createGeminiProvider(tabId) {
+    async createGeminiProvider(tabId) {
         const result = await chrome.storage.local.get("geminiApiKey");
         const apiKey = result.geminiApiKey;
 

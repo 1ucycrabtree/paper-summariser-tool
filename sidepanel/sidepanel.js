@@ -2,7 +2,7 @@ import * as pdfjsLib from "../scripts/pdf.mjs";
 import { MessageActions } from "../constants.js";
 
 // TODO: matrix save tab state
-// TODO: fix ainProgress state saving for different sections
+// TODO: fix aiInProgress state saving for different sections
 // TODO: refactor common code between summary and matrix sections
 // TODO: only fetch pdf once and share between sections
 
