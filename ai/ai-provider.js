@@ -12,5 +12,6 @@ export class AIProvider {
     }
 
     destroy() {
+        // Optional cleanup logic can be implemented by subclasses
     }
 }

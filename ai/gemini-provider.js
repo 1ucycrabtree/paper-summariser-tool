@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { AIProvider } from "./AIProvider.js";
+import { AIProvider } from "./ai-provider.js";
 import { Config } from "../constants.js";
 import { sendError, sendSummaryChunk, sendStreamEnded } from "../utils/messaging.js";
 
@@ -47,7 +47,6 @@ export class GeminiProvider extends AIProvider {
             throw error;
         }
     }
-
     _buildPrompt(text) {
         return `You are a highly skilled academic research assistant.
 
@@ -73,4 +72,9 @@ export class GeminiProvider extends AIProvider {
         }
         return error.message || "Unknown error occurred";
     }
+
+    destroy() {
+        this.client = null;
+    }
+
 }

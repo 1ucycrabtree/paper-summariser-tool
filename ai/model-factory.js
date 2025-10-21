@@ -1,7 +1,7 @@
 import { Models } from "../constants.js";
 import { getUserHardwareSpecs } from "../utils/hardware.js";
-import { PromptProvider } from "./PromptProvider.js";
-import { GeminiProvider } from "./GeminiProvider.js";
+import { PromptProvider } from "./prompt-provider.js";
+import { GeminiProvider } from "./gemini-provider.js";
 
 export class ModelFactory {
     constructor(LanguageModel) {

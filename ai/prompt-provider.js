@@ -1,9 +1,9 @@
-import { AIProvider } from "./AIProvider.js";
+import { AIProvider } from "./ai-provider.js";
 import { Config } from "../constants.js";
 import {
     splitTextIntoChunks,
     processTextChunks,
-} from "../utils/textProcessing.js";
+} from "../utils/text-processing.js";
 import {
     sendError,
     sendDownloadProgress,
