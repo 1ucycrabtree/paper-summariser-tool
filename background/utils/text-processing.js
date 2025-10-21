@@ -1,4 +1,4 @@
-import { Config } from "../constants.js";
+import { Config } from "../../constants.js";
 
 export function splitTextIntoChunks(text, chunkSize = Config.CHUNK_SIZE, chunkOverlap = 0, includeReferences = false) {
     if (!includeReferences) {

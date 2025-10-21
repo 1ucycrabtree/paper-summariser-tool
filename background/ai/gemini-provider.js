@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { AIProvider } from "./ai-provider.js";
-import { Config } from "../constants.js";
+import { Config } from "../../constants.js";
 import { sendError, sendSummaryChunk, sendStreamEnded } from "../utils/messaging.js";
 
 export class GeminiProvider extends AIProvider {

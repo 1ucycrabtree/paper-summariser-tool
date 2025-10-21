@@ -1,4 +1,4 @@
-import { MessageActions } from "../constants.js";
+import { MessageActions } from "../../constants.js";
 
 export function sendError(tabId, error) {
     chrome.runtime.sendMessage({

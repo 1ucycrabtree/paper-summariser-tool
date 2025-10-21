@@ -1,4 +1,4 @@
-import { Models, Sections } from "../constants.js";
+import { Models, Sections } from "../../constants.js";
 import { getUserHardwareSpecs } from "../utils/hardware.js";
 import { GeminiProvider } from "./gemini-provider.js";
 import { PromptProvider } from "./prompt-provider.js";

@@ -6,7 +6,7 @@ import {
     sendStreamEnded,
 } from "../utils/messaging.js";
 import { splitTextIntoChunks } from "../utils/text-processing.js";
-import { Config } from "../constants.js";
+import { Config } from "../../constants.js";
 
 export class SummaryProvider extends AIProvider {
     constructor(tabId) {

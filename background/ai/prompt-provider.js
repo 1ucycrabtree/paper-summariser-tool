@@ -1,8 +1,5 @@
 import { AIProvider } from "./ai-provider.js";
-import {
-    splitTextIntoChunks,
-    processTextChunks,
-} from "../utils/text-processing.js";
+import { splitTextIntoChunks } from "../utils/text-processing.js";
 import {
     sendError,
     sendDownloadProgress,
