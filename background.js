@@ -1,11 +1,12 @@
 import { sendError } from "./utils/messaging.js";
-import { ModelFactory } from "./ai/ModelFactory.js";
+import { ModelFactory } from "./ai/model-factory.js";
 import { MessageActions } from "./constants.js";
 
-// define LanguageModel to stop no-undef ESLint error
+// define LanguageModel and Summarizer to stop no-undef ESLint error
 let LanguageModel;
+let Summarizer;
 
-const modelFactory = new ModelFactory(LanguageModel);
+const modelFactory = new ModelFactory();
 
 chrome.action.onClicked.addListener(async (tab) => {
     if (chrome.sidePanel && typeof chrome.sidePanel.open === "function") {

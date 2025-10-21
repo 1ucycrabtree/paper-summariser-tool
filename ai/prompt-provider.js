@@ -1,5 +1,4 @@
 import { AIProvider } from "./ai-provider.js";
-import { Config } from "../constants.js";
 import {
     splitTextIntoChunks,
     processTextChunks,
@@ -12,15 +11,14 @@ import {
 } from "../utils/messaging.js";
 
 export class PromptProvider extends AIProvider {
-    constructor(tabId, LanguageModel) {
+    constructor(tabId) {
         super(tabId);
-        this.LanguageModel = LanguageModel;
         this.session = null;
     }
 
     async isAvailable() {
         try {
-            const availability = await this.LanguageModel.availability();
+            const availability = await LanguageModel.availability();
             return availability !== "unavailable";
         } catch (error) {
             console.error("Error checking LanguageModel availability:", error);
@@ -30,7 +28,7 @@ export class PromptProvider extends AIProvider {
 
     async generateSummary(text) {
         try {
-            this.session = await this.LanguageModel.create({
+            this.session = await LanguageModel.create({
                 initialPrompt: "You are a highly skilled academic research assistant.",
                 monitor: (m) => {
                     m.addEventListener("downloadprogress", (e) => {
@@ -61,7 +59,7 @@ export class PromptProvider extends AIProvider {
     _buildFinalSummaryPrompt(combinedUpdates) {
         return `You are a highly skilled academic research assistant. The following are the key findings and updates extracted sequentially from a paper.
 
-        Your task is to synthesize these points into a single, cohesive, and concise summary paragraph (no more than ${Config.MAX_SUMMARY_SENTENCES} sentences). Ensure the final output flows naturally.
+        Your task is to synthesize these points into a single, cohesive, and concise summary paragraph (no more than 5-6 sentences). Ensure the final output flows naturally.
 
         KEY INFORMATION:
         ---

@@ -221,7 +221,7 @@ summarizeButton?.addEventListener("click", async () => {
             });
             streamingStates[tab.id] = { isFirstChunk: true };
             chrome.runtime.sendMessage({
-                action: MessageActions.START_SUMMARY,
+                action: MessageActions.GENERATE_SUMMARY,
                 file: parsedText,
                 tabId: tab.id,
             });

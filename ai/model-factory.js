@@ -1,12 +1,10 @@
 import { Models } from "../constants.js";
 import { getUserHardwareSpecs } from "../utils/hardware.js";
-import { PromptProvider } from "./prompt-provider.js";
 import { GeminiProvider } from "./gemini-provider.js";
+import { PromptProvider } from "./prompt-provider.js";
+import { SummaryProvider } from "./summary-provider.js";
 
 export class ModelFactory {
-    constructor(LanguageModel) {
-        this.LanguageModel = LanguageModel;
-    }
 
     async determineModelType() {
         const { sufficientHardware, vramGB } = await getUserHardwareSpecs();
@@ -30,7 +28,7 @@ export class ModelFactory {
         }
 
         if (modelType === Models.LOCAL) {
-            const provider = new PromptProvider(tabId, this.LanguageModel);
+            const provider = new SummaryProvider(tabId);
             const available = await provider.isAvailable();
             
             if (!available) {
