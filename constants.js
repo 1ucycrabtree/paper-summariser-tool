@@ -1,9 +1,9 @@
 export const Config = Object.freeze({
     minVramGb: 4,
     minVramBytes: 4 * 1024 * 1024 * 1024,
-    chunkSize: 20000,
-    chunkConcurrency: 3,
-    chunkOverlap: 200,
+    defaultChunkSize: 20000,
+    defaultChunkConcurrency: 3,
+    defaultChunkOverlap: 200,
 });
 
 export const Models = Object.freeze({

@@ -430,16 +430,16 @@ chrome.runtime.onMessage.addListener(async (request) => {
 
     switch (action) {
     case MessageActions.SUMMARY_CHUNK_RECEIVED:
-        ({ state, aiInProgress } = _handleSummaryChunkReceived(request, state, tabStreamState));
+        ({ state, aiInProgress } = handleSummaryChunkReceived(request, state, tabStreamState));
         break;
     case MessageActions.SUMMARY_STREAM_ENDED:
-        ({ state, aiInProgress } = _handleSummaryStreamEnded(state, tabStreamState, tabId));
+        ({ state, aiInProgress } = handleSummaryStreamEnded(state, tabStreamState, tabId));
         break;
     case MessageActions.AI_ERROR:
-        ({ state, aiInProgress } = _handleAiError(request, state, tabStreamState));
+        ({ state, aiInProgress } = handleAiError(request, state, tabStreamState));
         break;
     case MessageActions.MODEL_DOWNLOAD_PROGRESS:
-        ({ state, aiInProgress } = _handleModelDownloadProgress(request, state));
+        ({ state, aiInProgress } = handleModelDownloadProgress(request, state));
         break;
     default:
         break;
@@ -462,7 +462,7 @@ chrome.runtime.onMessage.addListener(async (request) => {
     }
 });
 
-function _handleSummaryChunkReceived(request, state, tabStreamState) {
+function handleSummaryChunkReceived(request, state, tabStreamState) {
     if (tabStreamState.isFirstChunk) {
         state.containerContent = request.chunk;
         tabStreamState.isFirstChunk = false;
@@ -472,7 +472,7 @@ function _handleSummaryChunkReceived(request, state, tabStreamState) {
     return { state, aiInProgress: true };
 }
 
-function _handleSummaryStreamEnded(state, tabStreamState, tabId) {
+function handleSummaryStreamEnded(state, tabStreamState, tabId) {
     console.log(`Summary stream finished for tab ${tabId}.`);
     tabStreamState.isFirstChunk = true;
     let aiInProgress = false;
@@ -487,13 +487,13 @@ function _handleSummaryStreamEnded(state, tabStreamState, tabId) {
     return { state, aiInProgress };
 }
 
-function _handleAiError(request, state, tabStreamState) {
+function handleAiError(request, state, tabStreamState) {
     state.containerContent = `An error occurred: ${request.error}`;
     tabStreamState.isFirstChunk = true;
     return { state, aiInProgress: false };
 }
 
-function _handleModelDownloadProgress(request, state) {
+function handleModelDownloadProgress(request, state) {
     if (request.progress > 0 && request.progress < 1) {
         state.containerContent = `Model downloading! (this may take a while but will only happen once) ${request.progress * 100}%`;
     }

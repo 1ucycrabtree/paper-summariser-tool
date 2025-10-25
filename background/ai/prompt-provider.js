@@ -40,7 +40,7 @@ export class PromptProvider extends AIProvider {
             const chunkUpdates = await processTextChunks(this.session, textChunks);
             const combinedUpdates = chunkUpdates.join("\n\n");
 
-            const finalPrompt = this._buildFinalSummaryPrompt(combinedUpdates);
+            const finalPrompt = this.buildFinalSummaryPrompt(combinedUpdates);
             const finalStream = await this.session.promptStreaming(finalPrompt);
 
             for await (const chunk of finalStream) {
@@ -55,10 +55,10 @@ export class PromptProvider extends AIProvider {
         }
     }
 
-    _buildFinalSummaryPrompt(combinedUpdates) {
+    buildFinalSummaryPrompt(combinedUpdates) {
         return `You are a highly skilled academic research assistant. The following are the key findings and updates extracted sequentially from a paper.
 
-        Your task is to synthesize these points into a single, cohesive, and concise summary paragraph (no more than 6 sentences). Ensure the final output flows naturally.
+        Your task is to synthesize these points into a single, cohesive, and concise summary paragraph (no more than 6 sentences). Ensure the final output flows naturally and focuses on arguments, findings, limitations, and methodology.
 
         KEY INFORMATION:
         ---

@@ -17,7 +17,7 @@ export class GeminiProvider extends AIProvider {
         try {
             this.client = new GoogleGenAI({ apiKey: this.apiKey });
 
-            const prompt = this._buildPrompt(text);
+            const prompt = this.buildPrompt(text);
             const responseStream = await this.client.models.generateContentStream({
                 model: "gemini-2.5-flash-lite",
                 systemInstruction:
@@ -40,13 +40,14 @@ export class GeminiProvider extends AIProvider {
             console.log("Gemini session completed successfully.");
         } catch (error) {
             console.error("Gemini generation error:", error);
-            
-            const errorMessage = this._parseError(error);
+
+            const errorMessage = this.parseError(error);
             sendError(this.tabId, errorMessage);
             throw error;
         }
     }
-    _buildPrompt(text) {
+
+    buildPrompt(text) {
         return `You are a highly skilled academic research assistant.
 
         Your task is to summarize the following text into a critical summary including new, critical information (arguments, findings, limitations, methodology, etc).
@@ -56,11 +57,10 @@ export class GeminiProvider extends AIProvider {
         ---
         ${text}
         ---
-
         SUMMARY:`;
     }
 
-    _parseError(error) {
+    parseError(error) {
         try {
             if (error.error?.message) {
                 const parsed = JSON.parse(error.error.message);

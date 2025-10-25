@@ -39,12 +39,12 @@ export class SummaryProvider extends AIProvider {
                 },
             });
 
-            const textChunks = splitTextIntoChunks(text, this.session.inputQuota, Config.chunkOverlap);
+            const textChunks = splitTextIntoChunks(text, this.session.inputQuota, Config.defaultChunkOverlap);
             if (!textChunks || textChunks.length === 0) {
                 throw new Error("Could not find any content to summarize. The text might be empty.");
             }
 
-            const finalSummary = await this._recursiveSummarizer(textChunks);
+            const finalSummary = await this.recursiveSummarizer(textChunks);
 
             for await (const chunk of finalSummary) {
                 sendSummaryChunk(this.tabId, chunk);
@@ -66,7 +66,7 @@ export class SummaryProvider extends AIProvider {
     }
 
     // recursive summarization from google summary of summaries approach
-    async _recursiveSummarizer(chunks) {
+    async recursiveSummarizer(chunks) {
         const chunkCount = chunks.length;
         console.log(`Starting recursive summarization for ${chunkCount} chunks.`);
 
@@ -101,6 +101,6 @@ export class SummaryProvider extends AIProvider {
             });
         }
 
-        return this._recursiveSummarizer(summaries);
+        return this.recursiveSummarizer(summaries);
     }
 }
