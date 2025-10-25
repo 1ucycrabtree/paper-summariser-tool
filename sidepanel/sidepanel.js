@@ -1,25 +1,109 @@
 import * as pdfjsLib from "../scripts/pdf.mjs";
-import { MessageActions } from "../constants.js";
+import { MessageActions, Sections } from "../constants.js";
 
-// TODO: matrix save tab state
-// TODO: fix aiInProgress state saving for different sections
 // TODO: refactor common code between summary and matrix sections
-// TODO: only fetch pdf once and share between sections
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "../scripts/pdf.worker.mjs";
+
+const summarizeButton = document.getElementById("summarizeButton");
+const generateMatrixButton = document.getElementById("generateMatrixButton");
+const summaryOutputDiv = document.getElementById("summaryOutput");
+const matrixOutputDiv = document.getElementById("matrixOutput");
 
 let streamingStates = {};
 let currentTabId = null;
 
+const pdfCache = {};
+const pdfParsePromises = {};
+
 document.addEventListener("DOMContentLoaded", function () {
     const pageTitleContainer = document.getElementById("pageTitleContainer");
-    const summaryOutputDiv = document.getElementById("summaryOutput");
 
     init();
     setupTabListeners();
 
+    const apiForm = document.getElementById("api-key-form");
+    const apiInput = document.getElementById("api-key-input");
+    const apiStatus = document.getElementById("api-key-status");
+
+    if (chrome?.storage?.local && apiInput && apiStatus) {
+        chrome.storage.local.get(["geminiApiKey"], (result) => {
+            if (result.geminiApiKey) {
+                apiInput.value = result.geminiApiKey;
+                apiStatus.textContent = "API key loaded from local storage.";
+                setApiKeyFormVisibility(false);
+            } else {
+                apiStatus.textContent = "Please enter your Gemini API key.";
+                setApiKeyFormVisibility(true);
+            }
+            setupApiKeyFormToggle();
+        });
+    }
+
+    function setApiKeyFormVisibility(visible) {
+        const form = document.getElementById("api-key-form");
+        const arrow = document.getElementById("api-toggle-arrow");
+        if (!form || !arrow) return;
+        form.style.display = visible ? "flex" : "none";
+        form.dataset.visible = visible ? "true" : "false";
+        arrow.textContent = visible ? "▼" : "▶";
+    }
+
+    function setupApiKeyFormToggle() {
+        const toggle = document.getElementById("api-config-toggle");
+        const form = document.getElementById("api-key-form");
+        if (!toggle || !form) return;
+        toggle.addEventListener("click", () => {
+            const currentlyVisible = form.dataset.visible === "true";
+            setApiKeyFormVisibility(!currentlyVisible);
+        });
+    }
+
+    if (apiForm) {
+        apiForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+            const apiKey = apiInput?.value?.trim();
+            if (!chrome?.storage?.local) {
+                apiStatus.textContent = "Storage API unavailable.";
+                return;
+            }
+            if (apiKey) {
+                chrome.storage.local.set({ geminiApiKey: apiKey }, () => {
+                    if (chrome.runtime.lastError) {
+                        apiStatus.textContent = "Error saving API key.";
+                        console.error("Error saving Gemini API key:", chrome.runtime.lastError);
+                    } else {
+                        apiStatus.textContent = "API key saved.";
+                        setApiKeyFormVisibility(false);
+                    }
+                });
+            } else {
+                apiStatus.textContent = "API key cannot be empty.";
+            }
+        });
+    }
+
+    // show/hide API key checkbox handler
+    const toggleCheckbox = document.getElementById("toggle-api-key-visibility");
+    if (toggleCheckbox) {
+        toggleCheckbox.addEventListener("change", function () {
+            const apiKeyInput = document.getElementById("api-key-input");
+            if (!apiKeyInput) return;
+            if (this.checked) {
+                apiKeyInput.type = "text";
+                apiKeyInput.focus();
+            } else {
+                apiKeyInput.type = "password";
+            }
+        });
+    }
+
     async function init() {
         try {
+            if (!chrome?.tabs) {
+                showError("Chrome tabs API unavailable.");
+                return;
+            }
             const tabs = await chrome.tabs.query({
                 active: true,
                 currentWindow: true,
@@ -28,10 +112,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (currentTab) {
                 currentTabId = currentTab.id;
-                await loadSummarySectionState(currentTab.id);
-                if (!streamingStates[currentTab.id]) {
-                    streamingStates[currentTab.id] = { isFirstChunk: true };
-                }
+                await loadTabState(currentTab.id);
+                streamingStates[currentTab.id] = streamingStates[currentTab.id] || {};
+                streamingStates[currentTab.id][Sections.SUMMARY] = streamingStates[currentTab.id][Sections.SUMMARY] || { isFirstChunk: true };
+                streamingStates[currentTab.id][Sections.MATRIX] = streamingStates[currentTab.id][Sections.MATRIX] || { isFirstChunk: true };
             } else {
                 showError("Unable to get current page information");
             }
@@ -42,15 +126,15 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function setupTabListeners() {
-        if (chrome.tabs?.onActivated) {
+        if (chrome?.tabs?.onActivated) {
             chrome.tabs.onActivated.addListener(async (activeInfo) => {
                 try {
                     const tab = await chrome.tabs.get(activeInfo.tabId);
                     currentTabId = activeInfo.tabId;
-                    await loadSummarySectionState(tab.id);
-                    if (!streamingStates[currentTabId]) {
-                        streamingStates[currentTabId] = { isFirstChunk: true };
-                    }
+                    await loadTabState(tab.id);
+                    streamingStates[currentTabId] = streamingStates[currentTabId] || {};
+                    streamingStates[currentTabId][Sections.SUMMARY] = streamingStates[currentTabId][Sections.SUMMARY] || { isFirstChunk: true };
+                    streamingStates[currentTabId][Sections.MATRIX] = streamingStates[currentTabId][Sections.MATRIX] || { isFirstChunk: true };
                 } catch (error) {
                     console.error("Error handling tab activation:", error);
                     showError("Error loading tab information");
@@ -58,37 +142,12 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         }
 
-        if (chrome.tabs?.onUpdated) {
+        if (chrome?.tabs?.onUpdated) {
             chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
                 if (tabId === currentTabId && changeInfo.status === "complete") {
-                    await loadSummarySectionState(tabId);
+                    await loadTabState(tabId);
                 }
             });
-        }
-    }
-
-    async function loadSummarySectionState(tabId) {
-        try {
-            const result = await chrome.storage.session.get(`state-${tabId}`);
-            const state = result[`state-${tabId}`];
-            if (state) {
-                summaryOutputDiv.innerHTML =
-                    state.containerContent || "No content available.";
-                if (state.containerState) {
-                    summaryOutputDiv.style.display =
-                        state.containerState.display || "block";
-                }
-                if (summarizeButton) {
-                    summarizeButton.disabled = state.aiInProgress;
-                }
-            } else {
-                summaryOutputDiv.textContent = "Waiting for user action...";
-                if (summarizeButton) summarizeButton.disabled = false;
-            }
-        } catch (error) {
-            console.error("Error loading tab state:", error);
-            summaryOutputDiv.textContent = "Waiting for user action...";
-            if (summarizeButton) summarizeButton.disabled = false;
         }
     }
 
@@ -98,64 +157,6 @@ document.addEventListener("DOMContentLoaded", function () {
             pageTitleContainer.innerHTML = errorDiv;
         }
     }
-});
-
-document.addEventListener("DOMContentLoaded", function () {
-    const form = document.getElementById("api-key-form");
-    const input = document.getElementById("api-key-input");
-    const status = document.getElementById("api-key-status");
-
-    chrome.storage.local.get(["geminiApiKey"], (result) => {
-        if (result.geminiApiKey) {
-            input.value = result.geminiApiKey;
-            status.textContent = "API key loaded from local storage.";
-            setApiKeyFormVisibility(false);
-        } else {
-            status.textContent = "Please enter your Gemini API key.";
-            setApiKeyFormVisibility(true);
-        }
-        setupApiKeyFormToggle();
-    });
-
-    function setApiKeyFormVisibility(visible) {
-        const form = document.getElementById("api-key-form");
-        const arrow = document.getElementById("api-toggle-arrow");
-        form.style.display = visible ? "flex" : "none";
-        form.dataset.visible = visible ? "true" : "false";
-        arrow.textContent = visible ? "▼" : "▶";
-    }
-
-    function setupApiKeyFormToggle() {
-        const toggle = document.getElementById("api-config-toggle");
-        const form = document.getElementById("api-key-form");
-        toggle.addEventListener("click", () => {
-            const currentlyVisible = form.dataset.visible === "true";
-            setApiKeyFormVisibility(!currentlyVisible);
-        });
-    }
-
-    form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const apiKey = input.value.trim();
-        if (apiKey) {
-            chrome.storage.local.set({ geminiApiKey: apiKey }, () => {
-                if (chrome.runtime.lastError) {
-                    status.textContent = "Error saving API key.";
-                    console.error(
-                        "Error saving Gemini API key:",
-                        chrome.runtime.lastError
-                    );
-                } else {
-                    status.textContent = "API key saved.";
-                    console.log("Gemini API key saved.");
-                    setApiKeyFormVisibility(false);
-                }
-            });
-        } else {
-            status.textContent = "API key cannot be empty.";
-            console.log("API key cannot be empty.");
-        }
-    });
 });
 
 // listen to show/hide API key checkbox
@@ -171,260 +172,223 @@ document
         }
     });
 
-const summarizeButton = document.getElementById("summarizeButton");
-const generateMatrixButton = document.getElementById("generateMatrixButton");
-const summaryOutputDiv = document.getElementById("summaryOutput");
-const matrixOutputDiv = document.getElementById("matrixOutput");
-
-async function saveSummarySectionState(
-    tabId,
-    containerContent,
-    containerState,
-    aiInProgress
-) {
+async function saveSectionState(tabId, sectionKey, containerContent, containerState, aiInProgress) {
     try {
         await chrome.storage.session.set({
-            [`state-${tabId}`]: { containerContent, containerState, aiInProgress },
+            [`state-${tabId}-${sectionKey}`]: { containerContent, containerState, aiInProgress },
         });
     } catch (error) {
         console.error("Error saving tab state:", error);
     }
 }
 
-async function saveMatrixSectionState(
-    tabId,
-    containerContent,
-    containerState,
-    aiInProgress
-) {
-    try {
-        console.log(tabId, containerContent, containerState, aiInProgress);
-        //todo  
+async function getOrParsePdf(tabUrl, tabId, outputDiv) {
+    if (pdfCache[tabId]) {
+        return pdfCache[tabId];
     }
-    catch (error) {
-        console.error("Error saving tab state:", error);
+    if (pdfParsePromises[tabId]) {
+        return pdfParsePromises[tabId];
+    }
+    const promise = (async () => {
+        try {
+            if (outputDiv) outputDiv.textContent = "PDF viewer detected. Downloading file...";
+            const pdfResponse = await fetch(tabUrl);
+            const pdfBlob = await pdfResponse.blob();
+            if (outputDiv) outputDiv.textContent = "PDF fetched. Parsing...";
+            const parsedText = await parsePdfBlob(pdfBlob, outputDiv);
+            pdfCache[tabId] = parsedText;
+            return parsedText;
+        } finally {
+            delete pdfParsePromises[tabId];
+        }
+    })();
+    pdfParsePromises[tabId] = promise;
+    return promise;
+}
+
+async function handleAnalyzeAction(sectionKey, outputDiv, button, messageAction) {
+    if (!outputDiv) return;
+    outputDiv.textContent = "Analyzing tab...";
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab?.url) {
+        outputDiv.textContent = "Could not get page information.";
+        await saveSectionState(tab?.id, sectionKey, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+            aiInProgress: false,
+        });
+        return;
+    }
+
+    const url = tab.url.toLowerCase();
+    const title = tab.title ? tab.title.toLowerCase() : "";
+    const pdfInUrlRegex = /[./?=]pdf/i;
+    const isUrlDirectPdf = url.endsWith(".pdf") || url.startsWith("blob:");
+    const isViewerActive = title.endsWith(".pdf");
+    const isPdfInUrl = pdfInUrlRegex.test(tab.url);
+
+    if (isUrlDirectPdf || isViewerActive || isPdfInUrl) {
+        try {
+            const parsedText = await getOrParsePdf(tab.url, tab.id, outputDiv);
+            outputDiv.textContent = "Parsing complete. Generating result...";
+            await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, {
+                display: outputDiv.style.display,
+                aiInProgress: false,
+            });
+            streamingStates[tab.id] = streamingStates[tab.id] || {};
+            streamingStates[tab.id][sectionKey] = { isFirstChunk: true };
+            chrome.runtime.sendMessage({
+                action: messageAction,
+                file: parsedText,
+                tabId: tab.id,
+                section: sectionKey,
+            });
+            outputDiv.textContent = messageAction === MessageActions.GENERATE_SUMMARY ? "Generating summary... " : "Generating matrix... ";
+            const spinner = document.createElement("div");
+            spinner.className = "spinner";
+            spinner.setAttribute("role", "status");
+            spinner.setAttribute("aria-live", "polite");
+            outputDiv.appendChild(spinner);
+            if (button) button.disabled = true;
+            await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, {
+                display: outputDiv.style.display,
+                aiInProgress: true,
+            });
+        } catch (error) {
+            console.error("Failed to fetch or parse PDF:", error);
+            outputDiv.textContent = `Error: ${error.message}`;
+        }
+        return;
+    }
+
+    const identifierResult = await extractPaperIdentifierFromUrl(tab.url, tab.id);
+    if (!identifierResult.found) {
+        outputDiv.textContent = `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
+        await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+            aiInProgress: false,
+        });
+        return;
+    }
+
+    outputDiv.textContent = `Found paper identifier: ${identifierResult.identifier}. Searching for PDF link...`;
+    const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifierResult.identifier}?fields=openAccessPdf`;
+    try {
+        const ssResponse = await fetch(semanticScholarUrl);
+        // TODO: handle rate limiting (429) and other errors
+        const ssData = await ssResponse.json();
+        const pdfUrl = ssData?.openAccessPdf?.url;
+        if (!pdfUrl) {
+            throw new Error("No Open Access PDF link found via Semantic Scholar.");
+        }
+        outputDiv.innerHTML = "Found a potential PDF link. ";
+        const link = document.createElement("a");
+        link.href = pdfUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Open this link";
+        outputDiv.appendChild(link);
+        outputDiv.appendChild(
+            document.createTextNode(
+                ' in a new tab. Once the PDF is visible, click the "Analyze Active Tab" button again.'
+            )
+        );
+        await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+            aiInProgress: false,
+        });
+    } catch (error) {
+        console.error("API call failed:", error);
+        outputDiv.textContent = `Error: ${error.message}`;
+        await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+            aiInProgress: false,
+        });
     }
 }
 
 summarizeButton?.addEventListener("click", async () => {
-    if (!summaryOutputDiv) return;
-    summaryOutputDiv.textContent = "Analyzing tab...";
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-    if (!tab?.url) {
-        summaryOutputDiv.textContent = "Could not get page information.";
-        await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-            display: summaryOutputDiv.style.display,
-            aiInProgress: false,
-        });
-        return;
-    }
-
-    const url = tab.url.toLowerCase();
-    const title = tab.title ? tab.title.toLowerCase() : "";
-    const pdfInUrlRegex = /[./?=]pdf/i;
-    const isUrlDirectPdf = url.endsWith(".pdf") || url.startsWith("blob:");
-    const isViewerActive = title.endsWith(".pdf");
-    const isPdfInUrl = pdfInUrlRegex.test(tab.url);
-
-    if (isUrlDirectPdf || isViewerActive || isPdfInUrl) {
-        summaryOutputDiv.textContent = "PDF viewer detected. Downloading file...";
-        try {
-            const pdfResponse = await fetch(tab.url);
-            const pdfBlob = await pdfResponse.blob();
-            summaryOutputDiv.textContent = "PDF fetched. Parsing...";
-            const parsedText = await parsePdfBlob(pdfBlob);
-            summaryOutputDiv.textContent = "Parsing complete. Generating summary...";
-            await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-                display: summaryOutputDiv.style.display,
-                aiInProgress: false,
-            });
-            streamingStates[tab.id] = { isFirstChunk: true };
-            chrome.runtime.sendMessage({
-                action: MessageActions.GENERATE_SUMMARY,
-                file: parsedText,
-                tabId: tab.id,
-            });
-            summaryOutputDiv.textContent = "Generating summary... ";
-            const spinner = document.createElement("div");
-            spinner.className = "spinner";
-            spinner.setAttribute("role", "status");
-            spinner.setAttribute("aria-live", "polite");
-            summaryOutputDiv.appendChild(spinner);
-            if (summarizeButton) summarizeButton.disabled = true;
-            await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-                display: summaryOutputDiv.style.display,
-                aiInProgress: true,
-            });
-        } catch (error) {
-            console.error("Failed to fetch or parse PDF:", error);
-            summaryOutputDiv.textContent = `Error: ${error.message}`;
-        }
-        return;
-    }
-
-    const identifierResult = await extractPaperIdentifierFromUrl(tab.url, tab.id);
-    if (!identifierResult.found) {
-        summaryOutputDiv.textContent = `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
-        await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-            display: summaryOutputDiv.style.display,
-            aiInProgress: false,
-        });
-        return;
-    }
-
-    summaryOutputDiv.textContent = `Found paper identifier: ${identifierResult.identifier}. Searching for PDF link...`;
-    const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifierResult.identifier}?fields=openAccessPdf`;
-    try {
-        const ssResponse = await fetch(semanticScholarUrl);
-        // TODO: handle rate limiting (429) and other errors
-        const ssData = await ssResponse.json();
-        const pdfUrl = ssData?.openAccessPdf?.url;
-        if (!pdfUrl) {
-            throw new Error("No Open Access PDF link found via Semantic Scholar.");
-        }
-        summaryOutputDiv.innerHTML = "Found a potential PDF link. ";
-        const link = document.createElement("a");
-        link.href = pdfUrl;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = "Open this link";
-        summaryOutputDiv.appendChild(link);
-        summaryOutputDiv.appendChild(
-            document.createTextNode(
-                ' in a new tab. Once the PDF is visible, click the "Analyze Active Tab" button again.'
-            )
-        );
-        await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-            display: summaryOutputDiv.style.display,
-            aiInProgress: false,
-        });
-    } catch (error) {
-        console.error("API call failed:", error);
-        summaryOutputDiv.textContent = `Error: ${error.message}`;
-        await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-            display: summaryOutputDiv.style.display,
-            aiInProgress: false,
-        });
-    }
+    await handleAnalyzeAction(Sections.SUMMARY, summaryOutputDiv, summarizeButton, MessageActions.GENERATE_SUMMARY);
 });
 
 generateMatrixButton?.addEventListener("click", async () => {
-    if (!matrixOutputDiv) return;
-    matrixOutputDiv.textContent = "Analyzing tab...";
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-    if (!tab?.url) {
-        matrixOutputDiv.textContent = "Could not get page information.";
-        await saveMatrixSectionState(tab.id, matrixOutputDiv.innerHTML, {
-            display: matrixOutputDiv.style.display,
-            aiInProgress: false,
-        });
-        return;
-    }
-
-    const url = tab.url.toLowerCase();
-    const title = tab.title ? tab.title.toLowerCase() : "";
-    const pdfInUrlRegex = /[./?=]pdf/i;
-    const isUrlDirectPdf = url.endsWith(".pdf") || url.startsWith("blob:");
-    const isViewerActive = title.endsWith(".pdf");
-    const isPdfInUrl = pdfInUrlRegex.test(tab.url);
-
-    if (isUrlDirectPdf || isViewerActive || isPdfInUrl) {
-        matrixOutputDiv.textContent = "PDF viewer detected. Downloading file...";
-        try {
-            const pdfResponse = await fetch(tab.url);
-            const pdfBlob = await pdfResponse.blob();
-            matrixOutputDiv.textContent = "PDF fetched. Parsing...";
-            const parsedText = await parsePdfBlob(pdfBlob);
-            matrixOutputDiv.textContent = "Parsing complete. Generating matrix...";
-            await saveMatrixSectionState(tab.id, matrixOutputDiv.innerHTML, {
-                display: matrixOutputDiv.style.display,
-                aiInProgress: false,
-            });
-            streamingStates[tab.id] = { isFirstChunk: true };
-            chrome.runtime.sendMessage({
-                action: MessageActions.GENERATE_MATRIX,
-                file: parsedText,
-                tabId: tab.id,
-            });
-            matrixOutputDiv.textContent = "Generating matrix... ";
-            const spinner = document.createElement("div");
-            spinner.className = "spinner";
-            spinner.setAttribute("role", "status");
-            spinner.setAttribute("aria-live", "polite");
-            matrixOutputDiv.appendChild(spinner);
-            if (generateMatrixButton) generateMatrixButton.disabled = true;
-            await saveMatrixSectionState(tab.id, matrixOutputDiv.innerHTML, {
-                display: matrixOutputDiv.style.display,
-                aiInProgress: true,
-            });
-        } catch (error) {
-            console.error("Failed to fetch or parse PDF:", error);
-            matrixOutputDiv.textContent = `Error: ${error.message}`;
-        }
-        return;
-    }
-
-    const identifierResult = await extractPaperIdentifierFromUrl(tab.url, tab.id);
-    if (!identifierResult.found) {
-        matrixOutputDiv.textContent = `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
-        await saveMatrixSectionState(tab.id, matrixOutputDiv.innerHTML, {
-            display: matrixOutputDiv.style.display,
-            aiInProgress: false,
-        });
-        return;
-    }
-
-    matrixOutputDiv.textContent = `Found paper identifier: ${identifierResult.identifier}. Searching for PDF link...`;
-    const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifierResult.identifier}?fields=openAccessPdf`;
-    try {
-        const ssResponse = await fetch(semanticScholarUrl);
-        // TODO: handle rate limiting (429) and other errors
-        const ssData = await ssResponse.json();
-        const pdfUrl = ssData?.openAccessPdf?.url;
-        if (!pdfUrl) {
-            throw new Error("No Open Access PDF link found via Semantic Scholar.");
-        }
-        matrixOutputDiv.innerHTML = "Found a potential PDF link. ";
-        const link = document.createElement("a");
-        link.href = pdfUrl;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = "Open this link";
-        matrixOutputDiv.appendChild(link);
-        matrixOutputDiv.appendChild(
-            document.createTextNode(
-                ' in a new tab. Once the PDF is visible, click the "Analyze Active Tab" button again.'
-            )
-        );
-        await saveMatrixSectionState(tab.id, matrixOutputDiv.innerHTML, {
-            display: matrixOutputDiv.style.display,
-            aiInProgress: false,
-        });
-    } catch (error) {
-        console.error("API call failed:", error);
-        matrixOutputDiv.textContent = `Error: ${error.message}`;
-        await saveSummarySectionState(tab.id, summaryOutputDiv.innerHTML, {
-            display: summaryOutputDiv.style.display,
-            aiInProgress: false,
-        });
-    }
+    await handleAnalyzeAction(Sections.MATRIX, matrixOutputDiv, generateMatrixButton, MessageActions.GENERATE_MATRIX);
 });
+
+async function loadTabState(tabId) {
+    if (!chrome?.storage?.session) {
+        setDefaultUIState();
+        return;
+    }
+
+    const sectionKeys = Object.values(Sections);
+    await Promise.all(sectionKeys.map(sectionKey => loadSectionState(tabId, sectionKey)));
+}
+
+function setDefaultUIState() {
+    for (const div of [summaryOutputDiv, matrixOutputDiv]) {
+        if (div) div.textContent = "Waiting for user action...";
+    }
+    for (const btn of [summarizeButton, generateMatrixButton]) {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function loadSectionState(tabId, sectionKey) {
+    const isMatrix = sectionKey === Sections.MATRIX;
+    const storageKey = `state-${tabId}-${sectionKey}`;
+    const outputDiv = isMatrix ? matrixOutputDiv : summaryOutputDiv;
+    const button = isMatrix ? generateMatrixButton : summarizeButton;
+
+    try {
+        const result = await chrome.storage.session.get(storageKey);
+        const state = result[storageKey];
+
+        if (state) {
+            updateOutputDiv(outputDiv, state);
+            if (button) button.disabled = Boolean(state.aiInProgress);
+        } else {
+            setWaitingState(outputDiv, button);
+        }
+    } catch (error) {
+        console.error(`Error loading ${sectionKey} state:`, error);
+        setWaitingState(outputDiv, button);
+    }
+}
+
+function updateOutputDiv(outputDiv, state) {
+    if (outputDiv) {
+        outputDiv.innerHTML = state.containerContent || "No content available.";
+        if (state.containerState && state.containerState.display !== undefined) {
+            outputDiv.style.display = state.containerState.display || "block";
+        }
+    }
+}
+
+function setWaitingState(outputDiv, button) {
+    if (outputDiv) outputDiv.textContent = "Waiting for user action...";
+    if (button) button.disabled = false;
+}
 
 chrome.runtime.onMessage.addListener(async (request) => {
     const { action, tabId } = request;
     if (!tabId) return;
-
-    const result = await chrome.storage.session.get(`state-${tabId}`);
-    let state = result[`state-${tabId}`] || {
+    
+    if (request.section === undefined) {
+        throw new Error("Section key missing in message");
+    }
+    const sectionKey = request.section;
+    const storageKey = `state-${tabId}-${sectionKey}`;
+    const result = await chrome.storage.session.get(storageKey);
+    let state = result[storageKey] || {
         containerContent: "",
         containerState: { display: "block" },
         aiInProgress: true,
     };
 
-    let tabStreamState = streamingStates[tabId] || { isFirstChunk: true };
-    streamingStates[tabId] = tabStreamState;
+    const tabStreams = streamingStates[tabId] = streamingStates[tabId] || {};
+    let tabStreamState = tabStreams[sectionKey] || { isFirstChunk: true };
+    tabStreams[sectionKey] = tabStreamState;
 
     let aiInProgress = state.aiInProgress;
 
@@ -446,18 +410,15 @@ chrome.runtime.onMessage.addListener(async (request) => {
     }
 
     state.aiInProgress = aiInProgress;
-
-    await saveSummarySectionState(
-        tabId,
-        state.containerContent,
-        state.containerState,
-        state.aiInProgress
-    );
+    await saveSectionState(tabId, sectionKey, state.containerContent, state.containerState, state.aiInProgress);
 
     if (tabId === currentTabId) {
-        summaryOutputDiv.innerHTML = state.containerContent;
-        if (summarizeButton) {
-            summarizeButton.disabled = state.aiInProgress;
+        if (sectionKey === Sections.MATRIX && matrixOutputDiv) {
+            matrixOutputDiv.innerHTML = state.containerContent;
+            if (generateMatrixButton) generateMatrixButton.disabled = state.aiInProgress;
+        } else if (summaryOutputDiv) {
+            summaryOutputDiv.innerHTML = state.containerContent;
+            if (summarizeButton) summarizeButton.disabled = state.aiInProgress;
         }
     }
 });
@@ -500,9 +461,9 @@ function handleModelDownloadProgress(request, state) {
     return { state, aiInProgress: true };
 }
 
-async function parsePdfBlob(pdfBlob) {
+async function parsePdfBlob(pdfBlob, outputDiv) {
     try {
-        if (summaryOutputDiv) summaryOutputDiv.textContent = "Parsing PDF...";
+        if (outputDiv) outputDiv.textContent = "Parsing PDF...";
         const arrayBuffer = await pdfBlob.arrayBuffer();
         const typedArray = new Uint8Array(arrayBuffer);
         const pdf = await pdfjsLib.getDocument(typedArray).promise;

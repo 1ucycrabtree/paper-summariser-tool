@@ -36,10 +36,11 @@ async function handleResponse(text, tabId, section) {
     let provider = null;
     try {
         provider = await modelFactory.createProvider(tabId, section);
-        await provider.generateResponse(text);
+        await provider.generateResponse(text, section);
     } catch (error) {
         console.error("Error generating response:", error);
-        sendError(tabId, error.message);
+        // include section so sidepanel can route the error to the correct UI section
+        sendError(tabId, error.message, section);
     } finally {
         if (provider) {
             provider.destroy();

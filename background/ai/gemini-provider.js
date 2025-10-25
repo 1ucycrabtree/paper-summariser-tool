@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { AIProvider } from "./ai-provider.js";
 import { sendError, sendSummaryChunk, sendStreamEnded } from "../utils/messaging.js";
+import { Sections } from "../../constants.js";
 
 export class GeminiProvider extends AIProvider {
     constructor(tabId, apiKey) {
@@ -33,16 +34,16 @@ export class GeminiProvider extends AIProvider {
             for await (const chunk of responseStream) {
                 const chunkText =
                     typeof chunk.text === "function" ? chunk.text() : chunk.text;
-                sendSummaryChunk(this.tabId, chunkText);
+                sendSummaryChunk(this.tabId, chunkText, Sections.SUMMARY);
             }
 
-            sendStreamEnded(this.tabId);
+            sendStreamEnded(this.tabId, Sections.SUMMARY);
             console.log("Gemini session completed successfully.");
         } catch (error) {
             console.error("Gemini generation error:", error);
 
             const errorMessage = this.parseError(error);
-            sendError(this.tabId, errorMessage);
+            sendError(this.tabId, errorMessage, Sections.SUMMARY);
             throw error;
         }
     }

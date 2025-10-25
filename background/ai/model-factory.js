@@ -11,7 +11,7 @@ export class ModelFactory {
 
         if (sufficientHardware) {
             console.log(
-                `Sufficient GPU VRAM detected (${vramGB.toFixed(2)} GB). Using local LanguageModel.`
+                `Sufficient GPU VRAM detected (${vramGB.toFixed(2)} GB). Using local APIs.`
             );
             return Models.LOCAL;
         } else {
@@ -28,8 +28,10 @@ export class ModelFactory {
         let ProviderClass;
         if (modelPurpose === Sections.SUMMARY) {
             ProviderClass = SummaryProvider;
+            console.log("Creating SummaryProvider...");
         } else if (modelPurpose === Sections.MATRIX) {
             ProviderClass = PromptProvider;
+            console.log("Creating PromptProvider...");
         } else {
             throw new Error(`Unknown model purpose: ${modelPurpose}`);
         }
@@ -52,6 +54,7 @@ export class ModelFactory {
             throw new Error("Gemini API key not set.");
         }
 
+        console.log("Creating GeminiProvider...");
         return new GeminiProvider(tabId, apiKey);
     }
 }

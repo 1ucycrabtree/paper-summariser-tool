@@ -7,6 +7,7 @@ import {
     sendSummaryChunk,
     sendStreamEnded,
 } from "../utils/messaging.js";
+import { Sections } from "../../constants.js";
 
 export class PromptProvider extends AIProvider {
     constructor(tabId) {
@@ -31,7 +32,7 @@ export class PromptProvider extends AIProvider {
                 initialPrompt: "You are a highly skilled academic research assistant.",
                 monitor: (m) => {
                     m.addEventListener("downloadprogress", (e) => {
-                        sendDownloadProgress(this.tabId, e.loaded);
+                        sendDownloadProgress(this.tabId, e.loaded, Sections.MATRIX);
                     });
                 },
             });
@@ -44,13 +45,13 @@ export class PromptProvider extends AIProvider {
             const finalStream = await this.session.promptStreaming(finalPrompt);
 
             for await (const chunk of finalStream) {
-                sendSummaryChunk(this.tabId, chunk);
+                sendSummaryChunk(this.tabId, chunk, Sections.MATRIX);
             }
 
-            sendStreamEnded(this.tabId);
+            sendStreamEnded(this.tabId, Sections.MATRIX);
         } catch (error) {
             console.error("LocalAI generation error:", error);
-            sendError(this.tabId, error.message);
+            sendError(this.tabId, error.message, Sections.MATRIX);
             throw error;
         }
     }

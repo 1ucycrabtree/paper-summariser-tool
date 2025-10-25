@@ -6,7 +6,7 @@ import {
     sendStreamEnded,
 } from "../utils/messaging.js";
 import { splitTextIntoChunks } from "../utils/text-processing.js";
-import { Config } from "../../constants.js";
+import { Config, Sections } from "../../constants.js";
 
 export class SummaryProvider extends AIProvider {
     constructor(tabId) {
@@ -34,7 +34,7 @@ export class SummaryProvider extends AIProvider {
                 outputLanguage: "en",
                 monitor: (m) => {
                     m.addEventListener("downloadprogress", (e) => {
-                        sendDownloadProgress(this.tabId, e.loaded);
+                        sendDownloadProgress(this.tabId, e.loaded, Sections.SUMMARY);
                     });
                 },
             });
@@ -47,13 +47,13 @@ export class SummaryProvider extends AIProvider {
             const finalSummary = await this.recursiveSummarizer(textChunks);
 
             for await (const chunk of finalSummary) {
-                sendSummaryChunk(this.tabId, chunk);
+                sendSummaryChunk(this.tabId, chunk, Sections.SUMMARY);
             }
 
-            sendStreamEnded(this.tabId);
+            sendStreamEnded(this.tabId, Sections.SUMMARY);
         } catch (error) {
             console.error("LocalAI generation error:", error);
-            sendError(this.tabId, error.message);
+            sendError(this.tabId, error.message, Sections.SUMMARY);
             throw error;
         }
     }
