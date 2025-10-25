@@ -1,6 +1,6 @@
 /* eslint-disable no-undef */
 import { AIProvider } from "./ai-provider.js";
-import { splitTextIntoChunks, processTextChunks } from "../utils/text-processing.js";
+import { splitTextIntoChunks } from "../utils/text-processing.js";
 import {
     sendError,
     sendDownloadProgress,
@@ -27,7 +27,12 @@ export class PromptProvider extends AIProvider {
 
     async generateResponse(text) {
         try {
-            // TODO: customize initial prompt to generate matrix format not summary
+            let researchTopic = "";
+            if (typeof chrome !== "undefined" && chrome.storage?.session) {
+                const key = `researchTopic-${this.tabId}`;
+                const result = await chrome.storage.session.get(key);
+                researchTopic = result[key] || "";
+            }
             this.session = await LanguageModel.create({
                 initialPrompt: "You are a highly skilled academic research assistant.",
                 monitor: (m) => {
@@ -38,10 +43,10 @@ export class PromptProvider extends AIProvider {
             });
 
             const textChunks = splitTextIntoChunks(text);
-            const chunkUpdates = await processTextChunks(this.session, textChunks);
+            const chunkUpdates = await this.analyzeTextChunks(textChunks, researchTopic);
             const combinedUpdates = chunkUpdates.join("\n\n");
 
-            const finalPrompt = this.buildFinalSummaryPrompt(combinedUpdates);
+            const finalPrompt = this.buildFinalSummaryPrompt(combinedUpdates, researchTopic);
             const finalStream = await this.session.promptStreaming(finalPrompt);
 
             for await (const chunk of finalStream) {
@@ -56,16 +61,126 @@ export class PromptProvider extends AIProvider {
         }
     }
 
-    buildFinalSummaryPrompt(combinedUpdates) {
-        return `You are a highly skilled academic research assistant. The following are the key findings and updates extracted sequentially from a paper.
+    async analyzeTextChunks(textChunks, researchTopic = "", concurrency = 2) {
+        const chunkUpdates = [];
+        let runningSummary = "";
 
-        Your task is to synthesize these points into a single, cohesive, and concise summary paragraph (no more than 6 sentences). Ensure the final output flows naturally and focuses on arguments, findings, limitations, and methodology.
+        for (let i = 0; i < textChunks.length; i += concurrency) {
+            const batch = textChunks.slice(i, i + concurrency);
 
-        KEY INFORMATION:
-        ---
-        ${combinedUpdates}
-        ---
-        FINAL SUMMARY:`;
+            const promptPromises = batch.map((chunk) => {
+                const prompt = this.buildChunkAnalysisPrompt(runningSummary, researchTopic, chunk);
+                return this.session
+                    .prompt(prompt)
+                    .then((updateText) => ({ success: true, updateText }))
+                    .catch((err) => {
+                        console.error("Chunk analysis failed:", err);
+                        return { success: false, updateText: "No new information." };
+                    });
+            });
+
+            const results = await Promise.all(promptPromises);
+
+            for (const res of results) {
+                const updateText = res.updateText || "";
+                if (!updateText.includes("No new information.")) {
+                    chunkUpdates.push(updateText);
+                    runningSummary += "\n" + updateText;
+                }
+            }
+        }
+
+        return chunkUpdates;
+    }
+
+    buildChunkAnalysisPrompt(runningSummary, researchTopic, chunk) {
+        const questions = [
+            "Core Theme/Concept",
+            "Purpose of Study",
+            "Methodology",
+            "Key Findings & Contribution"
+        ];
+        let relevanceRow = "";
+        if (researchTopic && researchTopic.trim().length > 0) {
+            questions.push(`Relevance to Research Topic (${researchTopic})`);
+            relevanceRow = `Relevance to Research Topic: <answer>\n`;
+        }
+        questions.push(
+            "Limitations & Identified Gaps",
+            "Critical Appraisal"
+        );
+
+        return `You are a text analysis assistant. Your task is to identify and extract only new information in matrix format.
+
+Here is the summary of the document so far:
+---
+${runningSummary || "No summary has been generated yet."}
+---
+
+Now, analyze the following new text section. If it contains any new, critical information (arguments, findings, limitations, methodology, etc) not already present in the summary above, extract that new information and fill out the following matrix. For each row, answer the question in clear, concise sentences based only on the provided text. If there is no new information for a row, leave it blank or write "No new information." If the entire section only repeats or elaborates on information already covered, respond with the exact phrase "No new information."
+
+QUESTIONS:
+${questions.map(q => `- ${q}`).join("\n")}
+
+Please output your answers in the following format:
+
+Core Theme/Concept: <answer>
+Purpose of Study: <answer>
+Methodology: <answer>
+Key Findings & Contribution: <answer>
+${relevanceRow}
+Limitations & Identified Gaps: <answer>
+Critical Appraisal: <answer>
+
+For each new piece of information, output a line in the format Header: value. Only include headers for which you have new information. Do not output headers without a value.
+
+NEW TEXT SECTION:
+---
+${chunk}
+---
+
+MATRIX UPDATE:`;
+    }
+
+    buildFinalSummaryPrompt(combinedUpdates, researchTopic = "") {
+        const questions = [
+            "- Core Theme/Concept",
+            "- Purpose of Study",
+            "- Methodology",
+            "- Key Findings & Contribution",
+            "- Limitations & Identified Gaps",
+            "- Critical Appraisal"
+        ];
+
+        let relevanceQuestion = "";
+        if (researchTopic.trim().length > 0) {
+            questions.splice(4, 0, `- Relevance to Research Topic (${researchTopic})`);
+            relevanceQuestion = `Relevance to Research Topic: <answer>\n`;
+        }
+
+        return `You are a highly skilled academic research assistant. Your task is to extract key information from the following raw academic text and fill out a matrix. For each row, answer the question in clear, concise sentences based only on the provided text.
+    Ensure you keep key details and context from the original text.
+
+    QUESTIONS:
+    ${questions.join("\n")}
+
+    Please output your answers in the following format:
+
+    Core Theme/Concept: <answer>
+    Purpose of Study: <answer>
+    Methodology: <answer>
+    Key Findings & Contribution: <answer>
+    ${relevanceQuestion}
+    Limitations & Identified Gaps: <answer>
+    Critical Appraisal: <answer>
+
+    For each new piece of information, output a line in the format Header: value. Only include headers for which you have new information. Do not output headers without a value.
+
+    RAW TEXT:
+    ---
+    ${combinedUpdates}
+    ---
+    MATRIX ANSWERS:`;
     }
 
     destroy() {
