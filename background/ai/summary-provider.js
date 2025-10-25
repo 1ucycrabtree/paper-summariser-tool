@@ -30,7 +30,7 @@ export class SummaryProvider extends AIProvider {
                 sharedContext: "This is an academic article.",
                 type: "tldr",
                 length: "long",
-                format:"plain-text",
+                format: "plain-text",
                 outputLanguage: "en",
                 monitor: (m) => {
                     m.addEventListener("downloadprogress", (e) => {

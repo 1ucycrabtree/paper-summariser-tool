@@ -21,9 +21,9 @@ export class GeminiProvider extends AIProvider {
             this.client = new GoogleGenAI({ apiKey: this.apiKey });
 
             let prompt;
-            if (this.modelPurpose == Sections.SUMMARY) {
+            if (this.modelPurpose === Sections.SUMMARY) {
                 prompt = this.buildSummaryPrompt(text);
-            } else if (this.modelPurpose == Sections.MATRIX) {
+            } else if (this.modelPurpose === Sections.MATRIX) {
                 prompt = this.buildMatrixPrompt(text);
             } else {
                 throw new Error(`Unsupported model purpose: ${this.modelPurpose}`);
