@@ -1,22 +1,26 @@
 {
   "manifest_version": 3,
   "name": "Summariser Tool",
+  "icons": {
+    "16": "logo.png",
+    "32": "logo.png",
+    "48": "logo.png",
+    "128": "logo.png"
+  },
   "description": "Summarises and generates a synthesis of an academic resource.",
   "version": "1.0",
   "permissions": ["sidePanel", "activeTab", "scripting", "storage", "tabs"],
   "host_permissions": ["https://api.semanticscholar.org/", "<all_urls>"],
   "background": {
-    "service_worker": "dist/background.bundle.js"
+    "service_worker": "background/dist/background.bundle.js"
   },
   "action": {
-    "default_title": "Summariser Tool"
+    "default_title": "Summariser Tool",
+    "default_icon": "logo.png"
   },
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"
   },
-  "trial_tokens": [
-    "A4J/88rs/mO8UDt/1xp0aHoWQ8xWJmDilZLxs64su+hVdGHWOaOPY3dxOslWs3AhGOq8WanH0ST5XiXjv+XP2AkAAACMeyJvcmlnaW4iOiJjaHJvbWUtZXh0ZW5zaW9uOi8va2pvb3BrYWZsbGxhZWVhYm1hZWdpcGxkZ2dpaGxoaWYiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElGb3JFeHRlbnNpb24iLCJleHBpcnkiOjE3NjA0ODYzOTksImlzVGhpcmRQYXJ0eSI6dHJ1ZX0="
-  ],
   "web_accessible_resources": [
     {
       "resources": ["scripts/pdf.worker.mjs"],

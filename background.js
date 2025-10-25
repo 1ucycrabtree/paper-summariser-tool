@@ -1,11 +1,8 @@
-import { sendError } from "./utils/messaging.js";
-import { ModelFactory } from "./ai/ModelFactory.js";
-import { MessageActions } from "./constants.js";
+import { sendError } from "./background/utils/messaging.js";
+import { ModelFactory } from "./background/ai/model-factory.js";
+import { MessageActions, Sections } from "./constants.js";
 
-// define LanguageModel to stop no-undef ESLint error
-let LanguageModel;
-
-const modelFactory = new ModelFactory(LanguageModel);
+const modelFactory = new ModelFactory();
 
 chrome.action.onClicked.addListener(async (tab) => {
     if (chrome.sidePanel && typeof chrome.sidePanel.open === "function") {
@@ -20,23 +17,30 @@ chrome.action.onClicked.addListener(async (tab) => {
         );
     }
 });
+
 chrome.runtime.onMessage.addListener((request) => {
     if (request.action === MessageActions.GENERATE_SUMMARY) {
-        handleGenerateSummary(request.file, request.tabId);
+        handleResponse(request.file, request.tabId, Sections.SUMMARY);
         return true;
     }
 });
 
-async function handleGenerateSummary(text, tabId) {
+chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === MessageActions.GENERATE_MATRIX) {
+        handleResponse(request.file, request.tabId, Sections.MATRIX);
+        return true;
+    }
+});
+
+async function handleResponse(text, tabId, section) {
     let provider = null;
     try {
-        provider = await modelFactory.createProvider(tabId);
-        await provider.generateSummary(text);
+        provider = await modelFactory.createProvider(tabId, section);
+        await provider.generateResponse(text, section);
     } catch (error) {
-        console.error("Error generating summary:", error);
-        sendError(tabId, error.message);
-    }
-    finally {
+        console.error("Error generating response:", error);
+        sendError(tabId, error.message, section);
+    } finally {
         if (provider) {
             provider.destroy();
         }

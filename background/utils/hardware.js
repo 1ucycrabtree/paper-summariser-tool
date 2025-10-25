@@ -1,4 +1,4 @@
-import { Config } from "../constants.js";
+import { Config } from "../../constants.js";
 
 export async function getUserHardwareSpecs() {
     if (!navigator.gpu) {

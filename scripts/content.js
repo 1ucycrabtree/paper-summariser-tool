@@ -3,7 +3,7 @@ function findDoiInUrl() {
 
     const linkElement = Array.from(document.querySelectorAll('a')).find(a => {
         const href = a.getAttribute("href");
-        return href?.includes("doi.org");
+        return href && /(^|\/\/)[^/]*doi\.org[^\s]*/i.test(href);
     });
 
     if (linkElement) {

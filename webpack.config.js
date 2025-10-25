@@ -1,10 +1,10 @@
-const path = require('path');
+const path = require('node:path');
 
 module.exports = {
     entry: './background.js',
     output: {
         filename: 'background.bundle.js',
-        path: path.resolve(__dirname, 'dist'),
+        path: path.resolve(__dirname, 'background/dist'),
     },
     mode: 'production',
     resolve: {
