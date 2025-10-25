@@ -1,8 +1,6 @@
 import * as pdfjsLib from "../scripts/pdf.mjs";
 import { MessageActions, Sections } from "../constants.js";
 
-// TODO: refactor common code between summary and matrix sections
-
 pdfjsLib.GlobalWorkerOptions.workerSrc = "../scripts/pdf.worker.mjs";
 
 const summarizeButton = document.getElementById("summarizeButton");
@@ -314,7 +312,6 @@ summarizeButton?.addEventListener("click", async () => {
 generateMatrixButton?.addEventListener("click", async () => {
     const researchTopicInput = document.getElementById("researchTopicInput");
     const researchTopic = researchTopicInput ? researchTopicInput.value.trim() : "";
-    // Save research topic to chrome.session for current tab
     if (chrome?.storage?.session && currentTabId) {
         await chrome.storage.session.set({ [`researchTopic-${currentTabId}`]: researchTopic });
     }
@@ -458,7 +455,7 @@ function handleMatrixStreamEnded(state, tabStreamState, tabId) {
 
     state = removeSpinnerFromContent(state);
 
-    // convert the current text content into a table format
+    // convert the matrix text content into a table format
     const tempDiv = document.createElement("div");
     tempDiv.innerHTML = state.containerContent;
     const text = tempDiv.textContent || "";
