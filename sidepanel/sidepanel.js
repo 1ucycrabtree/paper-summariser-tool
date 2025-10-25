@@ -312,6 +312,12 @@ summarizeButton?.addEventListener("click", async () => {
 });
 
 generateMatrixButton?.addEventListener("click", async () => {
+    const researchTopicInput = document.getElementById("researchTopicInput");
+    const researchTopic = researchTopicInput ? researchTopicInput.value.trim() : "";
+    // Save research topic to chrome.session for current tab
+    if (chrome?.storage?.session && currentTabId) {
+        await chrome.storage.session.set({ [`researchTopic-${currentTabId}`]: researchTopic });
+    }
     await handleAnalyzeAction(Sections.MATRIX, matrixOutputDiv, generateMatrixButton, MessageActions.GENERATE_MATRIX);
 });
 
