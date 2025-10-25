@@ -419,11 +419,12 @@ chrome.runtime.onMessage.addListener(async (request) => {
     await saveSectionState(tabId, sectionKey, state.containerContent, state.containerState, state.aiInProgress);
 
     if (tabId === currentTabId) {
+        const text = state.containerContent || "";
         if (sectionKey === Sections.MATRIX && matrixOutputDiv) {
-            matrixOutputDiv.innerHTML = state.containerContent;
+            matrixOutputDiv.innerHTML = text;
             if (generateMatrixButton) generateMatrixButton.disabled = state.aiInProgress;
         } else if (summaryOutputDiv) {
-            summaryOutputDiv.innerHTML = state.containerContent;
+            summaryOutputDiv.innerHTML = text;
             if (summarizeButton) summarizeButton.disabled = state.aiInProgress;
         }
     }
@@ -456,10 +457,7 @@ function handleMatrixStreamEnded(state, tabStreamState, tabId) {
     state = removeSpinnerFromContent(state);
 
     // convert the matrix text content into a table format
-    const tempDiv = document.createElement("div");
-    tempDiv.innerHTML = state.containerContent;
-    const text = tempDiv.textContent || "";
-
+    const text = state.containerContent || "";
     const rows = [];
     const lines = text.split(/\n|(?<=\.)\s+(?=[A-Z])/).map(line => line.trim()).filter(Boolean);
 
@@ -472,13 +470,24 @@ function handleMatrixStreamEnded(state, tabStreamState, tabId) {
         }
     }
 
-    let tableHtml = "<table class='matrix-table'><tbody>";
+    const table = document.createElement("table");
+    table.className = "matrix-table";
+    const tbody = document.createElement("tbody");
     for (const [key, value] of rows) {
-        tableHtml += `<tr><th>${key}</th><td>${value}</td></tr>`;
+        const tr = document.createElement("tr");
+        const th = document.createElement("th");
+        th.textContent = key;
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.appendChild(th);
+        tr.appendChild(td);
+        tbody.appendChild(tr);
     }
-    tableHtml += "</tbody></table>";
+    table.appendChild(tbody);
 
-    state.containerContent = tableHtml;
+    const safeDiv = document.createElement("div");
+    safeDiv.appendChild(table);
+    state.containerContent = safeDiv.innerHTML;
     
     return { state, aiInProgress };
 
