@@ -36,6 +36,6 @@ export default defineConfig([{
     },
 },
 {
-    ignores: ["**/pdf.mjs", "**/pdf.worker.mjs", "**/dist/**"]
+    ignores: ["**/pdf.mjs", "**/pdf.worker.mjs", "dist/**"]
 }
 ]);

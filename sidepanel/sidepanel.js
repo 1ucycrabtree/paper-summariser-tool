@@ -24,11 +24,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const apiInput = document.getElementById("api-key-input");
     const apiStatus = document.getElementById("api-key-status");
 
-    if (chrome?.storage?.local && apiInput && apiStatus) {
-        chrome.storage.local.get(["geminiApiKey"], (result) => {
+    if (chrome?.storage?.session && apiInput && apiStatus) {
+        chrome.storage.session.get(["geminiApiKey"], (result) => {
             if (result.geminiApiKey) {
                 apiInput.value = result.geminiApiKey;
-                apiStatus.textContent = "API key loaded from local storage.";
+                apiStatus.textContent = "API key loaded from session storage.";
                 setApiKeyFormVisibility(false);
             } else {
                 apiStatus.textContent = "Please enter your Gemini API key.";
@@ -61,12 +61,12 @@ document.addEventListener("DOMContentLoaded", function () {
         apiForm.addEventListener("submit", (event) => {
             event.preventDefault();
             const apiKey = apiInput?.value?.trim();
-            if (!chrome?.storage?.local) {
+            if (!chrome?.storage?.session) {
                 apiStatus.textContent = "Storage API unavailable.";
                 return;
             }
             if (apiKey) {
-                chrome.storage.local.set({ geminiApiKey: apiKey }, () => {
+                chrome.storage.session.set({ geminiApiKey: apiKey }, () => {
                     if (chrome.runtime.lastError) {
                         apiStatus.textContent = "Error saving API key.";
                         console.error("Error saving Gemini API key:", chrome.runtime.lastError);
