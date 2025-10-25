@@ -38,8 +38,8 @@ export class SummaryProvider extends AIProvider {
                     });
                 },
             });
-        
-            const textChunks = splitTextIntoChunks(text, this.session.inputQuota, Config.CHUNK_OVERLAP);
+
+            const textChunks = splitTextIntoChunks(text, this.session.inputQuota, Config.chunkOverlap);
             if (!textChunks || textChunks.length === 0) {
                 throw new Error("Could not find any content to summarize. The text might be empty.");
             }
@@ -65,6 +65,7 @@ export class SummaryProvider extends AIProvider {
         }
     }
 
+    // recursive summarization from google summary of summaries approach
     async _recursiveSummarizer(chunks) {
         const chunkCount = chunks.length;
         console.log(`Starting recursive summarization for ${chunkCount} chunks.`);

@@ -1,6 +1,6 @@
 import { Config } from "../../constants.js";
 
-export function splitTextIntoChunks(text, chunkSize = Config.CHUNK_SIZE, chunkOverlap = 0, includeReferences = false) {
+export function splitTextIntoChunks(text, chunkSize = Config.chunkSize, chunkOverlap = 0, includeReferences = false) {
     if (!includeReferences) {
         const referencesIndex = text.search(/(^|\n)\s*References\s*(\n|$)/i);
         if (referencesIndex !== -1) {
@@ -28,7 +28,7 @@ export function splitTextIntoChunks(text, chunkSize = Config.CHUNK_SIZE, chunkOv
 export async function processTextChunks(
     session,
     textChunks,
-    concurrency = Config.CHUNK_CONCURRENCY
+    concurrency = Config.chunkConcurrency
 ) {
     const chunkUpdates = [];
     let runningSummary = "";

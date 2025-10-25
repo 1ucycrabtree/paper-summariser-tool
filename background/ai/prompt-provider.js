@@ -1,5 +1,6 @@
+/* eslint-disable no-undef */
 import { AIProvider } from "./ai-provider.js";
-import { splitTextIntoChunks } from "../utils/text-processing.js";
+import { splitTextIntoChunks, processTextChunks } from "../utils/text-processing.js";
 import {
     sendError,
     sendDownloadProgress,
@@ -57,13 +58,12 @@ export class PromptProvider extends AIProvider {
     _buildFinalSummaryPrompt(combinedUpdates) {
         return `You are a highly skilled academic research assistant. The following are the key findings and updates extracted sequentially from a paper.
 
-        Your task is to synthesize these points into a single, cohesive, and concise summary paragraph (no more than 5-6 sentences). Ensure the final output flows naturally.
+        Your task is to synthesize these points into a single, cohesive, and concise summary paragraph (no more than 6 sentences). Ensure the final output flows naturally.
 
         KEY INFORMATION:
         ---
         ${combinedUpdates}
         ---
-
         FINAL SUMMARY:`;
     }
 

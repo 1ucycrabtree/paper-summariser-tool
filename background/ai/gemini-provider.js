@@ -1,6 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 import { AIProvider } from "./ai-provider.js";
-import { Config } from "../../constants.js";
 import { sendError, sendSummaryChunk, sendStreamEnded } from "../utils/messaging.js";
 
 export class GeminiProvider extends AIProvider {
@@ -51,7 +50,7 @@ export class GeminiProvider extends AIProvider {
         return `You are a highly skilled academic research assistant.
 
         Your task is to summarize the following text into a critical summary including new, critical information (arguments, findings, limitations, methodology, etc).
-        It should be a paragraph (no more than ${Config.MAX_SUMMARY_SENTENCES} sentences). Ensure the final output flows naturally.
+        It should be a paragraph (no more than 6 sentences). Ensure the final output flows naturally.
 
         ACADEMIC PAPER TEXT:
         ---
