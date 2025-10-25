@@ -43,18 +43,23 @@ export class ModelFactory {
             }
             console.warn(`${ProviderClass.name} unavailable, falling back to Gemini`);
         }
-        return this.createGeminiProvider(tabId);
+        return this.createGeminiProvider(tabId, modelPurpose);
     }
 
-    async createGeminiProvider(tabId) {
-        const result = await chrome.storage.local.get("geminiApiKey");
-        const apiKey = result.geminiApiKey;
+    async createGeminiProvider(tabId, modelPurpose) {
+        const keyResult = await chrome.storage.local.get("geminiApiKey");
+        const apiKey = keyResult.geminiApiKey;
 
         if (!apiKey) {
             throw new Error("Gemini API key not set.");
         }
 
+        const topicKey = `researchTopic-${tabId}`;
+        const topicResult = await chrome.storage.session.get(topicKey);
+        const researchTopic = topicResult[topicKey] || "";
+        
+
         console.log("Creating GeminiProvider...");
-        return new GeminiProvider(tabId, apiKey);
+        return new GeminiProvider(tabId, apiKey, modelPurpose, researchTopic);
     }
 }

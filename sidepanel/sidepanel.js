@@ -435,8 +435,6 @@ chrome.runtime.onMessage.addListener(async (request) => {
 function handleChunkReceived(request, state, tabStreamState) {
     if (tabStreamState.isFirstChunk) {
         state.containerContent = request.chunk; 
-
-
         tabStreamState.isFirstChunk = false;
     } else {
         state.containerContent += request.chunk;
