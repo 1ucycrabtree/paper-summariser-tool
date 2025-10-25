@@ -399,8 +399,11 @@ chrome.runtime.onMessage.addListener(async (request) => {
     let aiInProgress = state.aiInProgress;
 
     switch (action) {
-    case MessageActions.SUMMARY_CHUNK_RECEIVED:
-        ({ state, aiInProgress } = handleSummaryChunkReceived(request, state, tabStreamState));
+    case MessageActions.CHUNK_RECEIVED:
+        ({ state, aiInProgress } = handleChunkReceived(request, state, tabStreamState));
+        break;
+    case MessageActions.MATRIX_STREAM_ENDED:
+        ({ state, aiInProgress } = handleMatrixStreamEnded(state, tabStreamState, tabId));
         break;
     case MessageActions.SUMMARY_STREAM_ENDED:
         ({ state, aiInProgress } = handleSummaryStreamEnded(state, tabStreamState, tabId));
@@ -429,9 +432,11 @@ chrome.runtime.onMessage.addListener(async (request) => {
     }
 });
 
-function handleSummaryChunkReceived(request, state, tabStreamState) {
+function handleChunkReceived(request, state, tabStreamState) {
     if (tabStreamState.isFirstChunk) {
-        state.containerContent = request.chunk;
+        state.containerContent = request.chunk; 
+
+
         tabStreamState.isFirstChunk = false;
     } else {
         state.containerContent += request.chunk;
@@ -444,6 +449,47 @@ function handleSummaryStreamEnded(state, tabStreamState, tabId) {
     tabStreamState.isFirstChunk = true;
     let aiInProgress = false;
 
+    state = removeSpinnerFromContent(state);
+    return { state, aiInProgress };
+}
+
+function handleMatrixStreamEnded(state, tabStreamState, tabId) {
+    console.log(`Matrix stream finished for tab ${tabId}.`);
+    tabStreamState.isFirstChunk = true;
+    let aiInProgress = false;
+
+    state = removeSpinnerFromContent(state);
+
+    // convert the current text content into a table format
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = state.containerContent;
+    const text = tempDiv.textContent || "";
+
+    const rows = [];
+    const lines = text.split(/\n|(?<=\.)\s+(?=[A-Z])/).map(line => line.trim()).filter(Boolean);
+
+    for (const line of lines) {
+        const colonIdx = line.indexOf(":");
+        if (colonIdx > 0) {
+            const key = line.slice(0, colonIdx).trim();
+            const value = line.slice(colonIdx + 1).trim();
+            rows.push([key, value]);
+        }
+    }
+
+    let tableHtml = "<table class='matrix-table'><tbody>";
+    for (const [key, value] of rows) {
+        tableHtml += `<tr><th>${key}</th><td>${value}</td></tr>`;
+    }
+    tableHtml += "</tbody></table>";
+
+    state.containerContent = tableHtml;
+    
+    return { state, aiInProgress };
+
+}
+
+function removeSpinnerFromContent(state) {
     const tempDiv = document.createElement("div");
     tempDiv.innerHTML = state.containerContent;
     const spinner = tempDiv.querySelector(".spinner");
@@ -451,7 +497,7 @@ function handleSummaryStreamEnded(state, tabStreamState, tabId) {
         spinner.remove();
         state.containerContent = tempDiv.innerHTML;
     }
-    return { state, aiInProgress };
+    return state;
 }
 
 function handleAiError(request, state, tabStreamState) {

@@ -16,8 +16,9 @@ export const MessageActions = Object.freeze({
     GENERATE_MATRIX: "generateMatrix",
     AI_ERROR: "aiError",
     MODEL_DOWNLOAD_PROGRESS: "modelDownloadProgress",
-    SUMMARY_CHUNK_RECEIVED: "finalSummaryChunkReceived",
+    CHUNK_RECEIVED: "chunkReceived",
     SUMMARY_STREAM_ENDED: "summaryStreamEnded",
+    MATRIX_STREAM_ENDED: "matrixStreamEnded",
 });
 
 export const Sections = Object.freeze({

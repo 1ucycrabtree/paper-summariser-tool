@@ -18,19 +18,27 @@ export function sendDownloadProgress(tabId, progress, section) {
     });
 }
 
-export function sendSummaryChunk(tabId, chunk, section) {
+export function sendChunk(tabId, chunk, section) {
     chrome.runtime.sendMessage({
-        action: MessageActions.SUMMARY_CHUNK_RECEIVED,
+        action: MessageActions.CHUNK_RECEIVED,
         chunk: chunk,
         tabId: tabId,
         section: section,
     });
 }
 
-export function sendStreamEnded(tabId, section) {
+export function sendSummaryStreamEnded(tabId, section) {
     chrome.runtime.sendMessage({
         action: MessageActions.SUMMARY_STREAM_ENDED,
         tabId: tabId,
         section: section,   
+    });
+}
+
+export function sendMatrixStreamEnded(tabId, section) {
+    chrome.runtime.sendMessage({
+        action: MessageActions.MATRIX_STREAM_ENDED,
+        tabId: tabId,
+        section: section,
     });
 }

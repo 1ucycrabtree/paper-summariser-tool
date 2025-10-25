@@ -4,8 +4,8 @@ import { splitTextIntoChunks } from "../utils/text-processing.js";
 import {
     sendError,
     sendDownloadProgress,
-    sendSummaryChunk,
-    sendStreamEnded,
+    sendChunk,
+    sendMatrixStreamEnded,
 } from "../utils/messaging.js";
 import { Sections } from "../../constants.js";
 
@@ -50,10 +50,10 @@ export class PromptProvider extends AIProvider {
             const finalStream = await this.session.promptStreaming(finalPrompt);
 
             for await (const chunk of finalStream) {
-                sendSummaryChunk(this.tabId, chunk, Sections.MATRIX);
+                sendChunk(this.tabId, chunk, Sections.MATRIX);
             }
 
-            sendStreamEnded(this.tabId, Sections.MATRIX);
+            sendMatrixStreamEnded(this.tabId, Sections.MATRIX);
         } catch (error) {
             console.error("LocalAI generation error:", error);
             sendError(this.tabId, error.message, Sections.MATRIX);
@@ -97,12 +97,13 @@ export class PromptProvider extends AIProvider {
         const questions = [
             "Core Theme/Concept: What is the central idea or concept explored in this section?",
             "Purpose of Study: What was the main goal or motivation behind the research?",
-            "Methodology: What methods, metrics, or scope did the authors use? Justify their choices if possible.",
+            "Methodology: What methods, metrics, or scope did the authors use (be specific)? Justify their choices if possible.",
             "Key Findings & Contribution: What was the main takeaway? What's new about their work compared to prior research?"
         ];
         let relevanceRow = "";
         if (researchTopic && researchTopic.trim().length > 0) {
-            questions.push(`Relevance to Research Topic (${researchTopic}): How does this paper directly inform your work? Justify your choice of methods, metrics, or scope.`);
+            questions.push(`Relevance to Research Topic: Does this paper directly address or inform your research topic (${researchTopic})? If not, respond with "No relevance." Do not infer or invent connections. Justify your answer only if relevant.`);
+
             relevanceRow = `Relevance to Research Topic: <answer>\n`;
         }
         questions.push(
@@ -112,75 +113,77 @@ export class PromptProvider extends AIProvider {
 
         return `You are a text analysis assistant. Your task is to identify and extract only new information in matrix format.
 
-Here is the summary of the document so far:
----
-${runningSummary || "No summary has been generated yet."}
----
+                Here is the summary of the document so far:
+                ---
+                ${runningSummary || "No summary has been generated yet."}
+                ---
 
-Now, analyze the following new text section. If it contains any new, critical information (arguments, findings, limitations, methodology, etc) not already present in the summary above, extract that new information and fill out the following matrix. For each row, answer the question in clear, concise sentences based only on the provided text. If there is no new information for a row, leave it blank or write "No new information." If the entire section only repeats or elaborates on information already covered, respond with the exact phrase "No new information."
+                Now, analyze the following new text section. If it contains any new, critical information (arguments, findings, limitations, methodology, etc) not already present in the summary above, extract that new information and fill out the following matrix. For each row, answer the question in clear, concise sentences based only on the provided text. If there is no new information for a row, leave it blank or write "No new information." If the entire section only repeats or elaborates on information already covered, respond with the exact phrase "No new information."
 
-QUESTIONS:
-${questions.map(q => `- ${q}`).join("\n")}
+                QUESTIONS:
+                ${questions.map(q => `- ${q}`).join("\n")}
 
-Please output your answers in the following format:
+                Please output your answers in the following format:
 
-Core Theme/Concept: <answer>
-Purpose of Study: <answer>
-Methodology: <answer>
-Key Findings & Contribution: <answer>
-${relevanceRow}
-Limitations & Identified Gaps: <answer>
-Critical Appraisal: <answer>
+                Core Theme/Concept: <answer>
+                Purpose of Study: <answer>
+                Methodology: <answer>
+                Key Findings & Contribution: <answer>
+                ${relevanceRow}
+                Limitations & Identified Gaps: <answer>
+                Critical Appraisal: <answer>
 
-For each new piece of information, output a line in the format Header: value. Only include headers for which you have new information. Do not output headers without a value.
+                For each new piece of information, output a line in the format Header: value. Only include headers for which you have new information. Do not output headers without a value.
 
-NEW TEXT SECTION:
----
-${chunk}
----
+                NEW TEXT SECTION:
+                ---
+                ${chunk}
+                ---
 
-MATRIX UPDATE:`;
+                MATRIX UPDATE:`;
     }
 
     buildFinalSummaryPrompt(combinedUpdates, researchTopic = "") {
         const questions = [
-            "- Core Theme/Concept",
-            "- Purpose of Study",
-            "- Methodology",
-            "- Key Findings & Contribution",
-            "- Limitations & Identified Gaps",
-            "- Critical Appraisal"
+            "Core Theme/Concept: What is the central idea or concept explored in this section?",
+            "Purpose of Study: What was the main goal or motivation behind the research?",
+            "Methodology: What methods, metrics, or scope did the authors use (be specific)? Justify their choices if possible.",
+            "Key Findings & Contribution: What was the main takeaway? What's new about their work compared to prior research?",
+            "Limitations & Identified Gaps: What did the authors admit were limitations? What gaps does their work leave open for you to address?",
+            "Critical Appraisal: Are the claims well-supported? Any unstated assumptions? Is the methodology sound? How does it fit into the broader academic conversation? Consider the academic journal standards."
         ];
 
         let relevanceQuestion = "";
         if (researchTopic.trim().length > 0) {
-            questions.splice(4, 0, `- Relevance to Research Topic (${researchTopic})`);
+            questions.splice(4, 0, 
+                `Relevance to Research Topic: Does this paper directly address or inform your research topic (${researchTopic})? If not, respond with "No relevance." Do not infer or invent connections. Justify your answer only if relevant.`
+            );
             relevanceQuestion = `Relevance to Research Topic: <answer>\n`;
         }
 
         return `You are a highly skilled academic research assistant. Your task is to extract key information from the following raw academic text and fill out a matrix. For each row, answer the question in clear, concise sentences based only on the provided text.
-    Ensure you keep key details and context from the original text.
+                Ensure you keep key details and context from the original text.
 
-    QUESTIONS:
-    ${questions.join("\n")}
+                QUESTIONS:
+                ${questions.join("\n")}
 
-    Please output your answers in the following format:
+                Please output your answers in the following format:
 
-    Core Theme/Concept: <answer>
-    Purpose of Study: <answer>
-    Methodology: <answer>
-    Key Findings & Contribution: <answer>
-    ${relevanceQuestion}
-    Limitations & Identified Gaps: <answer>
-    Critical Appraisal: <answer>
+                Core Theme/Concept: <answer>
+                Purpose of Study: <answer>
+                Methodology: <answer>
+                Key Findings & Contribution: <answer>
+                ${relevanceQuestion}
+                Limitations & Identified Gaps: <answer>
+                Critical Appraisal: <answer>
 
-    For each new piece of information, output a line in the format Header: value. Only include headers for which you have new information. Do not output headers without a value.
+                For each new piece of information, output a line in the format Header: value. Only include headers for which you have new information. Do not output headers without a value.
 
-    RAW TEXT:
-    ---
-    ${combinedUpdates}
-    ---
-    MATRIX ANSWERS:`;
+                RAW TEXT:
+                ---
+                ${combinedUpdates}
+                ---
+                MATRIX ANSWERS:`;
     }
 
     destroy() {
