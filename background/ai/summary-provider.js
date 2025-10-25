@@ -39,7 +39,7 @@ export class SummaryProvider extends AIProvider {
                 },
             });
 
-            const textChunks = splitTextIntoChunks(text, this.session.inputQuota, Config.defaultChunkOverlap);
+            const textChunks = splitTextIntoChunks(text, this.session.inputQuota, Config.DEFAULT_CHUNK_OVERLAP);
             if (!textChunks || textChunks.length === 0) {
                 throw new Error("Could not find any content to summarize. The text might be empty.");
             }
