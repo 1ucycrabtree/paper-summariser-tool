@@ -95,19 +95,19 @@ export class PromptProvider extends AIProvider {
 
     buildChunkAnalysisPrompt(runningSummary, researchTopic, chunk) {
         const questions = [
-            "Core Theme/Concept",
-            "Purpose of Study",
-            "Methodology",
-            "Key Findings & Contribution"
+            "Core Theme/Concept: What is the central idea or concept explored in this section?",
+            "Purpose of Study: What was the main goal or motivation behind the research?",
+            "Methodology: What methods, metrics, or scope did the authors use? Justify their choices if possible.",
+            "Key Findings & Contribution: What was the main takeaway? What's new about their work compared to prior research?"
         ];
         let relevanceRow = "";
         if (researchTopic && researchTopic.trim().length > 0) {
-            questions.push(`Relevance to Research Topic (${researchTopic})`);
+            questions.push(`Relevance to Research Topic (${researchTopic}): How does this paper directly inform your work? Justify your choice of methods, metrics, or scope.`);
             relevanceRow = `Relevance to Research Topic: <answer>\n`;
         }
         questions.push(
-            "Limitations & Identified Gaps",
-            "Critical Appraisal"
+            "Limitations & Identified Gaps: What did the authors admit were limitations? What gaps does their work leave open for you to address?",
+            "Critical Appraisal: Are the claims well-supported? Any unstated assumptions? Is the methodology sound? How does it fit into the broader academic conversation? Consider the academic journal standards."
         );
 
         return `You are a text analysis assistant. Your task is to identify and extract only new information in matrix format.
