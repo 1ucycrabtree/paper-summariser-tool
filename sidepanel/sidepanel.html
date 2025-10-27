@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Synthesis Matrix</title>
     <link rel="stylesheet" href="sidepanel.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap"
+        rel="stylesheet">
 </head>
 
 <body>
@@ -15,31 +19,18 @@
         </header>
 
         <main>
-            <section class="api-section">
-                <h3 id="api-config-toggle" style="margin: 0; color: #333; font-size: 1.2em; cursor: pointer;">
-                    API Key Configuration
-                    <span id="api-toggle-arrow" style="font-size: 1em; margin-left: 6px;">▼</span>
-                </h3>
-                <p id="api-key-status" style="font-size: 0.85em; color: #4f8cff; margin: 0;"></p>
-                <form id="api-key-form" style="display: flex; flex-direction: column;">
-                    <label for="api-key-input" style="font-weight: 500; color: #555; margin-top: 16px;">
-                        Enter your Gemini API key:</label>
-                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-                        <input type="password" id="api-key-input" placeholder="Paste your key here..." required
-                            style="padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 1em; width: -webkit-fill-available;">
-                        <input type="checkbox" id="toggle-api-key-visibility"
-                            style="margin-bottom: 0; cursor: pointer; margin-left: 4px;">
-                    </div>
-                    <div style="font-size: 0.9em; color: #777; margin-bottom: 8px;">
-                        Don't have a key? Create one in
-                        <a href="https://ai.google.dev/gemini-api/docs/api-key" target="_blank"
-                            style="color: #4f8cff; text-decoration: none;">Google AI Studio</a>.
-                    </div>
-                    <button type="submit"
-                        style="background: #4f8cff; color: #fff; margin-top: 4px; border: none; border-radius: 4px; padding: 10px 0; font-size: 1em; cursor: pointer; font-weight: 600;">
-                        Save Key To Local Storage!
-                    </button>
-                </form>
+            <div class="top-bar">
+                <button id="apiKeyButton">Gemini API Key</button>
+                <button id="stopButton" class="stop-button">Stop AI</button>
+            </div>
+
+            <section class="instructions-section">
+                <h2>Instructions</h2>
+                <ol>
+                    <li>Enter your Gemini API key in the section below.</li>
+                    <li>Click "Generate Summary" to create a summary of the current webpage.</li>
+                    <li>Input your research topic and click "Generate Matrix" to create a synthesis matrix.</li>
+                </ol>
             </section>
 
             <section class="summary-section">
@@ -53,7 +44,7 @@
 
             <section class="matrix-section">
                 <input type="text" id="researchTopicInput" placeholder="Enter your research topic..."
-                    style="padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 1em; width: -webkit-fill-available; margin-bottom: 12px;">
+                    class="research-topic-input">
                 <button id="generateMatrixButton">Generate Matrix</button>
                 <div id="matrixOutput" class="loading"></div>
             </section>
@@ -62,5 +53,32 @@
 
     <script src="sidepanel.js" type="module"></script>
 </body>
+
+<div id="apiKeyModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>API Key Configuration</h2>
+            <button class="close-modal" id="closeModal">&times;</button>
+        </div>
+        <form id="api-key-form">
+            <p id="api-key-status"></p>
+            <form id="api-key-form">
+                <label for="api-key-input">
+                    Enter your Gemini API key:</label>
+                <div class="api-key-input-container">
+                    <input type="password" id="api-key-input" placeholder="Paste your key here..." required>
+                    <input type="checkbox" id="toggle-api-key-visibility">
+                </div>
+                <div class="api-key-help-text">
+                    Don't have a key? Create one in
+                    <a href="https://ai.google.dev/gemini-api/docs/api-key" target="_blank">Google AI
+                        Studio</a>.
+                </div>
+                <button type="submit">
+                    Save Key To Local Storage!
+                </button>
+            </form>
+    </div>
+</div>
 
 </html>

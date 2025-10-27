@@ -6,6 +6,14 @@ const summarizeButton = document.getElementById("summarizeButton");
 const generateMatrixButton = document.getElementById("generateMatrixButton");
 const summaryOutputDiv = document.getElementById("summaryOutput");
 const matrixOutputDiv = document.getElementById("matrixOutput");
+const apiKeyModal = document.getElementById('apiKeyModal');
+const apiKeyButton = document.getElementById('apiKeyButton');
+const closeModal = document.getElementById('closeModal');
+const toggleVisibility = document.getElementById('toggle-api-key-visibility');
+const apiKeyInput = document.getElementById('api-key-input');
+const apiKeyForm = document.getElementById('api-key-form');
+const apiStatus = document.getElementById('api-key-status');
+const stopButton = document.getElementById('stopButton');
 
 // --- in-memory state management for different tabs ---
 let streamingStates = {};
@@ -80,79 +88,15 @@ document.addEventListener("DOMContentLoaded", function () {
             pageTitleContainer.innerHTML = errorDiv;
         }
     }
-    async function setApiKey() {
-        const apiForm = document.getElementById("api-key-form");
-        const apiInput = document.getElementById("api-key-input");
-        const apiStatus = document.getElementById("api-key-status");
 
-        if (chrome?.storage?.session && apiInput && apiStatus) {
+    async function setApiKey() {
+        if (chrome?.storage?.session) {
             chrome.storage.session.get(["geminiApiKey"], (result) => {
                 if (result.geminiApiKey) {
-                    apiInput.value = result.geminiApiKey;
+                    apiKeyInput.value = result.geminiApiKey;
                     apiStatus.textContent = "API key loaded from session storage.";
-                    setApiKeyFormVisibility(false);
                 } else {
                     apiStatus.textContent = "Please enter your Gemini API key.";
-                    setApiKeyFormVisibility(true);
-                }
-                setupApiKeyFormToggle();
-            });
-        }
-
-        function setApiKeyFormVisibility(visible) {
-            const form = document.getElementById("api-key-form");
-            const arrow = document.getElementById("api-toggle-arrow");
-            if (!form || !arrow) return;
-            form.style.display = visible ? "flex" : "none";
-            form.dataset.visible = visible ? "true" : "false";
-            arrow.textContent = visible ? "▼" : "▶";
-        }
-
-        function setupApiKeyFormToggle() {
-            const toggle = document.getElementById("api-config-toggle");
-            const form = document.getElementById("api-key-form");
-            if (!toggle || !form) return;
-            toggle.addEventListener("click", () => {
-                const currentlyVisible = form.dataset.visible === "true";
-                setApiKeyFormVisibility(!currentlyVisible);
-            });
-        }
-
-        if (apiForm) {
-            apiForm.addEventListener("submit", (event) => {
-                event.preventDefault();
-                const apiKey = apiInput?.value?.trim();
-                if (!chrome?.storage?.session) {
-                    apiStatus.textContent = "Storage API unavailable.";
-                    return;
-                }
-                if (apiKey) {
-                    chrome.storage.session.set({ geminiApiKey: apiKey }, () => {
-                        if (chrome.runtime.lastError) {
-                            apiStatus.textContent = "Error saving API key.";
-                            console.error("Error saving Gemini API key:", chrome.runtime.lastError);
-                        } else {
-                            apiStatus.textContent = "API key saved.";
-                            setApiKeyFormVisibility(false);
-                        }
-                    });
-                } else {
-                    apiStatus.textContent = "API key cannot be empty.";
-                }
-            });
-        }
-
-        // show/hide API key checkbox handler
-        const toggleCheckbox = document.getElementById("toggle-api-key-visibility");
-        if (toggleCheckbox) {
-            toggleCheckbox.addEventListener("change", function () {
-                const apiKeyInput = document.getElementById("api-key-input");
-                if (!apiKeyInput) return;
-                if (this.checked) {
-                    apiKeyInput.type = "text";
-                    apiKeyInput.focus();
-                } else {
-                    apiKeyInput.type = "password";
                 }
             });
         }
@@ -165,11 +109,7 @@ async function handleAnalyzeAction(sectionKey, outputDiv, button, messageAction)
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     if (!tab?.url) {
-        outputDiv.textContent = "Could not get page information.";
-        await saveSectionState(tab?.id, sectionKey, outputDiv.innerHTML, {
-            display: outputDiv.style.display,
-            aiInProgress: false,
-        });
+        await handleNoTabUrl(tab, sectionKey, outputDiv);
         return;
     }
 
@@ -181,49 +121,69 @@ async function handleAnalyzeAction(sectionKey, outputDiv, button, messageAction)
     const isPdfInUrl = pdfInUrlRegex.test(tab.url);
 
     if (isUrlDirectPdf || isViewerActive || isPdfInUrl) {
-        try {
-            const parsedText = await getOrParsePdf(tab.url, tab.id, outputDiv);
-            outputDiv.textContent = "Parsing complete. Generating result...";
-            await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, {
-                display: outputDiv.style.display,
-                aiInProgress: false,
-            });
-            streamingStates[tab.id] = streamingStates[tab.id] || {};
-            streamingStates[tab.id][sectionKey] = { isFirstChunk: true };
-            chrome.runtime.sendMessage({
-                action: messageAction,
-                file: parsedText,
-                tabId: tab.id,
-                section: sectionKey,
-            });
-            outputDiv.textContent = messageAction === MessageActions.GENERATE_SUMMARY ? "Generating summary... " : "Generating matrix... ";
-            const spinner = document.createElement("div");
-            spinner.className = "spinner";
-            spinner.setAttribute("role", "status");
-            spinner.setAttribute("aria-live", "polite");
-            outputDiv.appendChild(spinner);
-            if (button) button.disabled = true;
-            await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, {
-                display: outputDiv.style.display,
-                aiInProgress: true,
-            });
-        } catch (error) {
-            console.error("Failed to fetch or parse PDF:", error);
-            outputDiv.textContent = `Error: ${error.message}`;
-        }
+        await handlePdfTab(tab, sectionKey, outputDiv, button, messageAction);
         return;
     }
 
     const identifierResult = await extractPaperIdentifierFromUrl(tab.url, tab.id);
     if (!identifierResult.found) {
-        outputDiv.textContent = `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
+        await handleNoIdentifier(tab, sectionKey, outputDiv, identifierResult);
+        return;
+    }
+
+    await handleSemanticScholarLookup(tab, sectionKey, outputDiv, identifierResult);
+}
+
+async function handleNoTabUrl(tab, sectionKey, outputDiv) {
+    outputDiv.textContent = "Could not get page information.";
+    await saveSectionState(tab?.id, sectionKey, outputDiv.innerHTML, {
+        display: outputDiv.style.display,
+        aiInProgress: false,
+    });
+}
+
+async function handlePdfTab(tab, sectionKey, outputDiv, button, messageAction) {
+    try {
+        const parsedText = await getOrParsePdf(tab.url, tab.id, outputDiv);
+        outputDiv.textContent = "Parsing complete. Generating result...";
         await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, {
             display: outputDiv.style.display,
             aiInProgress: false,
         });
-        return;
+        streamingStates[tab.id] = streamingStates[tab.id] || {};
+        streamingStates[tab.id][sectionKey] = { isFirstChunk: true };
+        chrome.runtime.sendMessage({
+            action: messageAction,
+            file: parsedText,
+            tabId: tab.id,
+            section: sectionKey,
+        });
+        outputDiv.textContent = messageAction === MessageActions.GENERATE_SUMMARY ? "Generating summary... " : "Generating matrix... ";
+        const spinner = document.createElement("div");
+        spinner.className = "spinner";
+        spinner.setAttribute("role", "status");
+        spinner.setAttribute("aria-live", "polite");
+        outputDiv.appendChild(spinner);
+        if (button) button.disabled = true;
+        await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, {
+            display: outputDiv.style.display,
+            aiInProgress: true,
+        });
+    } catch (error) {
+        console.error("Failed to fetch or parse PDF:", error);
+        outputDiv.textContent = `Error: ${error.message}`;
     }
+}
 
+async function handleNoIdentifier(tab, sectionKey, outputDiv, identifierResult) {
+    outputDiv.textContent = `Could not identify a paper on this page. ${identifierResult.message} If you have the PDF open, please ensure the URL ends with ".pdf".`;
+    await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, {
+        display: outputDiv.style.display,
+        aiInProgress: false,
+    });
+}
+
+async function handleSemanticScholarLookup(tab, sectionKey, outputDiv, identifierResult) {
     outputDiv.textContent = `Found paper identifier: ${identifierResult.identifier}. Searching for PDF link...`;
     const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifierResult.identifier}?fields=openAccessPdf`;
     try {
@@ -241,10 +201,11 @@ async function handleAnalyzeAction(sectionKey, outputDiv, button, messageAction)
                 errorMessage = "Bad request to Semantic Scholar API. Invalid paper identifier.";
                 break;
             default:
-                errorMessage = `Semantic Scholar API error: ${ssResponse.status} ${ssResponse.statusText}`; }
+                errorMessage = `Semantic Scholar API error: ${ssResponse.status} ${ssResponse.statusText}`;
+            }
             throw new Error(errorMessage);
         }
-        
+
         const ssData = await ssResponse.json();
         const pdfUrl = ssData?.openAccessPdf?.url;
         if (!pdfUrl) {
@@ -290,6 +251,60 @@ generateMatrixButton?.addEventListener("click", async () => {
     await handleAnalyzeAction(Sections.MATRIX, matrixOutputDiv, generateMatrixButton, MessageActions.GENERATE_MATRIX);
 });
 
+apiKeyButton?.addEventListener("click", () => {
+    apiKeyModal.classList.add('open');
+});
+
+closeModal?.addEventListener("click", () => {
+    apiKeyModal.classList.remove('open');
+});
+
+apiKeyModal?.addEventListener("click", (event) => {
+    if (event.target === apiKeyModal) {
+        apiKeyModal.classList.remove('open');
+    }
+});
+
+toggleVisibility?.addEventListener("change", function () {
+    apiKeyInput.type = toggleVisibility.checked ? 'text' : 'password';
+});
+
+apiKeyForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const apiKey = apiKeyInput?.value?.trim();
+            
+    if (!chrome?.storage?.session) {
+        apiStatus.textContent = "✗ Storage API unavailable.";
+        return;
+    }
+
+    if (apiKey) {
+        chrome.storage.session.set({ geminiApiKey: apiKey }, () => {
+            if (chrome.runtime.lastError) {
+                apiStatus.textContent = "✗ Error saving API key.";
+                console.error("Error saving Gemini API key:", chrome.runtime.lastError);
+            } else {
+                apiStatus.textContent = "✓ API key saved successfully.";
+                setTimeout(() => {
+                    apiKeyModal.classList.remove('open');
+                }, 1000);
+            }
+        });
+    } else {
+        apiStatus.textContent = "✗ API key cannot be empty.";
+    }
+});
+
+// -- stop button handler to stop AI sessions ---
+stopButton.addEventListener('click', () => {
+    if (currentTabId !== null) {
+        chrome.runtime.sendMessage({
+            action: MessageActions.STOP_AI,
+            tabId: currentTabId,
+        });
+    }
+});
+        
 // --- handle states ---
 async function loadTabState(tabId) {
     if (!chrome?.storage?.session) {
@@ -358,10 +373,15 @@ function setWaitingState(outputDiv, button) {
 
 
 // --- incoming message handler ---
+
 chrome.runtime.onMessage.addListener(async (request) => {
     const { action, tabId } = request;
     if (!tabId) return;
-    
+
+    if (action === MessageActions.STOP_AI) {
+        await handleStopAIEvents({ tabId });
+        return;
+    }
     if (request.section === undefined) {
         throw new Error("Section key missing in message");
     }
@@ -502,4 +522,35 @@ function handleModelDownloadProgress(request, state) {
         state.containerContent = `Model downloading! (this may take a while but will only happen once) ${request.progress * 100}%`;
     }
     return { state, aiInProgress: true };
+}
+
+async function handleStopAIEvents({ tabId }) {
+    console.log(`Stopping AI events for tab ${tabId}.`);
+
+    for (const sectionKey of Object.values(Sections)) {
+        const storageKey = `state-${tabId}-${sectionKey}`;
+        const result = await chrome.storage.session.get(storageKey);
+        let state = result[storageKey];
+
+        if (state && state.aiInProgress) {
+            state = removeSpinnerFromContent(state);
+            state.containerContent += "<br><em>AI generation stopped by user.</em>";
+            state.aiInProgress = false;
+
+            await saveSectionState(tabId, sectionKey, state.containerContent, state.containerState, false);
+
+            if (tabId === currentTabId) {
+                const outputDiv = sectionKey === Sections.SUMMARY ? summaryOutputDiv : matrixOutputDiv;
+                const button = sectionKey === Sections.SUMMARY ? summarizeButton : generateMatrixButton;
+                if (outputDiv) outputDiv.innerHTML = state.containerContent;
+                if (button) button.disabled = false;
+            }
+        }
+    }
+
+    if (streamingStates[tabId]) {
+        for (const section in streamingStates[tabId]) {
+            streamingStates[tabId][section].isFirstChunk = true;
+        }
+    }
 }

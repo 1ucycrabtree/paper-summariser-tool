@@ -138,7 +138,7 @@ function getQuestions(researchTopic) {
         "Methodology: What methods, metrics, or scope did the authors use (be specific)? Justify their choices if possible.",
         "Key Findings & Contribution: What was the main takeaway? What's new about their work compared to prior research?"
     ];
-    if (researchTopic?.trim()) {
+    if (researchTopic?.trim().length > 0) {
         baseQuestions.push(`Relevance to Research Topic: Does this paper directly address or inform your research topic (${researchTopic})? If not, respond with "No relevance." Do not infer or invent connections. Justify your answer only if relevant.`);
     }
     baseQuestions.push(
@@ -154,7 +154,7 @@ function getMatrixHeaders(researchTopic) {
         "Purpose of Study",
         "Methodology",
         "Key Findings & Contribution",
-        ...(researchTopic?.trim() ? ["Relevance to Research Topic"] : []),
+        ...(researchTopic?.trim().length > 0 ? ["Relevance to Research Topic"] : []),
         "Limitations & Identified Gaps",
         "Critical Appraisal"
     ];

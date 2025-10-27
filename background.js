@@ -1,4 +1,4 @@
-import { sendError } from "./background/utils/messaging.js";
+import { sendError , stopEvents} from "./background/utils/messaging.js";
 import { ModelFactory } from "./background/ai/model-factory.js";
 import { MessageActions, Sections } from "./constants.js";
 
@@ -18,16 +18,25 @@ chrome.action.onClicked.addListener(async (tab) => {
     }
 });
 
-chrome.runtime.onMessage.addListener((request) => {
+chrome.runtime.onMessage.addListener(async (request) => {
     if (request.action === MessageActions.GENERATE_SUMMARY) {
-        handleResponse(request.file, request.tabId, Sections.SUMMARY);
+        await handleResponse(request.file, request.tabId, Sections.SUMMARY);
         return true;
     }
 });
 
-chrome.runtime.onMessage.addListener((request) => {
+chrome.runtime.onMessage.addListener(async (request) => {
     if (request.action === MessageActions.GENERATE_MATRIX) {
-        handleResponse(request.file, request.tabId, Sections.MATRIX);
+        await handleResponse(request.file, request.tabId, Sections.MATRIX);
+        return true;
+    }
+});
+
+chrome.runtime.onMessage.addListener(async (request) => {
+    if (request.action === MessageActions.STOP_AI) {
+        console.log(`Received stop AI request for tab ${request.tabId}`);
+        stopEvents(request.tabId);
+        await modelFactory.destroyProviderForTab(request.tabId);
         return true;
     }
 });
@@ -38,11 +47,16 @@ async function handleResponse(text, tabId, section) {
         provider = await modelFactory.createProvider(tabId, section);
         await provider.generateResponse(text, section);
     } catch (error) {
-        console.error("Error generating response:", error);
-        sendError(tabId, error.message, section);
+        if (error.message === "AI generation stopped by user.") {
+            console.log(`AI process for tab ${tabId} was stopped as requested.`);
+        } else {
+            console.error("Error generating response:", error);
+            sendError(tabId, error.message, section);
+        }
     } finally {
         if (provider) {
             provider.destroy();
+            modelFactory.providersByTab.delete(tabId);
         }
     }
 }

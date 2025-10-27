@@ -24,6 +24,7 @@ export const MessageActions = Object.freeze({
     CHUNK_RECEIVED: "chunkReceived",
     SUMMARY_STREAM_ENDED: "summaryStreamEnded",
     MATRIX_STREAM_ENDED: "matrixStreamEnded",
+    STOP_AI: "stopAI",
 });
 
 export const Sections = Object.freeze({
