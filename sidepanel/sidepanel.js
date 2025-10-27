@@ -1,100 +1,22 @@
-import * as pdfjsLib from "../scripts/pdf.mjs";
 import { MessageActions, Sections } from "../constants.js";
+import { getOrParsePdf, extractPaperIdentifierFromUrl } from "./pdf.js";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "../scripts/pdf.worker.mjs";
-
+// --- DOM Elements ---
 const summarizeButton = document.getElementById("summarizeButton");
 const generateMatrixButton = document.getElementById("generateMatrixButton");
 const summaryOutputDiv = document.getElementById("summaryOutput");
 const matrixOutputDiv = document.getElementById("matrixOutput");
 
+// --- in-memory state management for different tabs ---
 let streamingStates = {};
 let currentTabId = null;
-
-const pdfCache = {};
-const pdfParsePromises = {};
 
 document.addEventListener("DOMContentLoaded", function () {
     const pageTitleContainer = document.getElementById("pageTitleContainer");
 
     init();
     setupTabListeners();
-
-    const apiForm = document.getElementById("api-key-form");
-    const apiInput = document.getElementById("api-key-input");
-    const apiStatus = document.getElementById("api-key-status");
-
-    if (chrome?.storage?.session && apiInput && apiStatus) {
-        chrome.storage.session.get(["geminiApiKey"], (result) => {
-            if (result.geminiApiKey) {
-                apiInput.value = result.geminiApiKey;
-                apiStatus.textContent = "API key loaded from session storage.";
-                setApiKeyFormVisibility(false);
-            } else {
-                apiStatus.textContent = "Please enter your Gemini API key.";
-                setApiKeyFormVisibility(true);
-            }
-            setupApiKeyFormToggle();
-        });
-    }
-
-    function setApiKeyFormVisibility(visible) {
-        const form = document.getElementById("api-key-form");
-        const arrow = document.getElementById("api-toggle-arrow");
-        if (!form || !arrow) return;
-        form.style.display = visible ? "flex" : "none";
-        form.dataset.visible = visible ? "true" : "false";
-        arrow.textContent = visible ? "▼" : "▶";
-    }
-
-    function setupApiKeyFormToggle() {
-        const toggle = document.getElementById("api-config-toggle");
-        const form = document.getElementById("api-key-form");
-        if (!toggle || !form) return;
-        toggle.addEventListener("click", () => {
-            const currentlyVisible = form.dataset.visible === "true";
-            setApiKeyFormVisibility(!currentlyVisible);
-        });
-    }
-
-    if (apiForm) {
-        apiForm.addEventListener("submit", (event) => {
-            event.preventDefault();
-            const apiKey = apiInput?.value?.trim();
-            if (!chrome?.storage?.session) {
-                apiStatus.textContent = "Storage API unavailable.";
-                return;
-            }
-            if (apiKey) {
-                chrome.storage.session.set({ geminiApiKey: apiKey }, () => {
-                    if (chrome.runtime.lastError) {
-                        apiStatus.textContent = "Error saving API key.";
-                        console.error("Error saving Gemini API key:", chrome.runtime.lastError);
-                    } else {
-                        apiStatus.textContent = "API key saved.";
-                        setApiKeyFormVisibility(false);
-                    }
-                });
-            } else {
-                apiStatus.textContent = "API key cannot be empty.";
-            }
-        });
-    }
-
-    // show/hide API key checkbox handler
-    const toggleCheckbox = document.getElementById("toggle-api-key-visibility");
-    if (toggleCheckbox) {
-        toggleCheckbox.addEventListener("change", function () {
-            const apiKeyInput = document.getElementById("api-key-input");
-            if (!apiKeyInput) return;
-            if (this.checked) {
-                apiKeyInput.type = "text";
-                apiKeyInput.focus();
-            } else {
-                apiKeyInput.type = "password";
-            }
-        });
-    }
+    setApiKey();
 
     async function init() {
         try {
@@ -102,6 +24,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 showError("Chrome tabs API unavailable.");
                 return;
             }
+            // identify the currently active tab and load its state for each section
             const tabs = await chrome.tabs.query({
                 active: true,
                 currentWindow: true,
@@ -124,6 +47,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function setupTabListeners() {
+        // switch sidepanel content when user changes active tab
         if (chrome?.tabs?.onActivated) {
             chrome.tabs.onActivated.addListener(async (activeInfo) => {
                 try {
@@ -140,6 +64,7 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         }
 
+        
         if (chrome?.tabs?.onUpdated) {
             chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
                 if (tabId === currentTabId && changeInfo.status === "complete") {
@@ -155,54 +80,84 @@ document.addEventListener("DOMContentLoaded", function () {
             pageTitleContainer.innerHTML = errorDiv;
         }
     }
+    async function setApiKey() {
+        const apiForm = document.getElementById("api-key-form");
+        const apiInput = document.getElementById("api-key-input");
+        const apiStatus = document.getElementById("api-key-status");
+
+        if (chrome?.storage?.session && apiInput && apiStatus) {
+            chrome.storage.session.get(["geminiApiKey"], (result) => {
+                if (result.geminiApiKey) {
+                    apiInput.value = result.geminiApiKey;
+                    apiStatus.textContent = "API key loaded from session storage.";
+                    setApiKeyFormVisibility(false);
+                } else {
+                    apiStatus.textContent = "Please enter your Gemini API key.";
+                    setApiKeyFormVisibility(true);
+                }
+                setupApiKeyFormToggle();
+            });
+        }
+
+        function setApiKeyFormVisibility(visible) {
+            const form = document.getElementById("api-key-form");
+            const arrow = document.getElementById("api-toggle-arrow");
+            if (!form || !arrow) return;
+            form.style.display = visible ? "flex" : "none";
+            form.dataset.visible = visible ? "true" : "false";
+            arrow.textContent = visible ? "▼" : "▶";
+        }
+
+        function setupApiKeyFormToggle() {
+            const toggle = document.getElementById("api-config-toggle");
+            const form = document.getElementById("api-key-form");
+            if (!toggle || !form) return;
+            toggle.addEventListener("click", () => {
+                const currentlyVisible = form.dataset.visible === "true";
+                setApiKeyFormVisibility(!currentlyVisible);
+            });
+        }
+
+        if (apiForm) {
+            apiForm.addEventListener("submit", (event) => {
+                event.preventDefault();
+                const apiKey = apiInput?.value?.trim();
+                if (!chrome?.storage?.session) {
+                    apiStatus.textContent = "Storage API unavailable.";
+                    return;
+                }
+                if (apiKey) {
+                    chrome.storage.session.set({ geminiApiKey: apiKey }, () => {
+                        if (chrome.runtime.lastError) {
+                            apiStatus.textContent = "Error saving API key.";
+                            console.error("Error saving Gemini API key:", chrome.runtime.lastError);
+                        } else {
+                            apiStatus.textContent = "API key saved.";
+                            setApiKeyFormVisibility(false);
+                        }
+                    });
+                } else {
+                    apiStatus.textContent = "API key cannot be empty.";
+                }
+            });
+        }
+
+        // show/hide API key checkbox handler
+        const toggleCheckbox = document.getElementById("toggle-api-key-visibility");
+        if (toggleCheckbox) {
+            toggleCheckbox.addEventListener("change", function () {
+                const apiKeyInput = document.getElementById("api-key-input");
+                if (!apiKeyInput) return;
+                if (this.checked) {
+                    apiKeyInput.type = "text";
+                    apiKeyInput.focus();
+                } else {
+                    apiKeyInput.type = "password";
+                }
+            });
+        }
+    }
 });
-
-// listen to show/hide API key checkbox
-document
-    .getElementById("toggle-api-key-visibility")
-    .addEventListener("change", function () {
-        const apiKeyInput = document.getElementById("api-key-input");
-        if (this.checked) {
-            apiKeyInput.type = "text";
-            apiKeyInput.focus();
-        } else {
-            apiKeyInput.type = "password";
-        }
-    });
-
-async function saveSectionState(tabId, sectionKey, containerContent, containerState, aiInProgress) {
-    try {
-        await chrome.storage.session.set({
-            [`state-${tabId}-${sectionKey}`]: { containerContent, containerState, aiInProgress },
-        });
-    } catch (error) {
-        console.error("Error saving tab state:", error);
-    }
-}
-
-async function getOrParsePdf(tabUrl, tabId, outputDiv) {
-    if (pdfCache[tabId]) {
-        return pdfCache[tabId];
-    }
-    if (pdfParsePromises[tabId]) {
-        return pdfParsePromises[tabId];
-    }
-    const promise = (async () => {
-        try {
-            if (outputDiv) outputDiv.textContent = "PDF viewer detected. Downloading file...";
-            const pdfResponse = await fetch(tabUrl);
-            const pdfBlob = await pdfResponse.blob();
-            if (outputDiv) outputDiv.textContent = "PDF fetched. Parsing...";
-            const parsedText = await parsePdfBlob(pdfBlob, outputDiv);
-            pdfCache[tabId] = parsedText;
-            return parsedText;
-        } finally {
-            delete pdfParsePromises[tabId];
-        }
-    })();
-    pdfParsePromises[tabId] = promise;
-    return promise;
-}
 
 async function handleAnalyzeAction(sectionKey, outputDiv, button, messageAction) {
     if (!outputDiv) return;
@@ -321,6 +276,7 @@ async function handleAnalyzeAction(sectionKey, outputDiv, button, messageAction)
     }
 }
 
+// --- button event listeners ---
 summarizeButton?.addEventListener("click", async () => {
     await handleAnalyzeAction(Sections.SUMMARY, summaryOutputDiv, summarizeButton, MessageActions.GENERATE_SUMMARY);
 });
@@ -334,6 +290,7 @@ generateMatrixButton?.addEventListener("click", async () => {
     await handleAnalyzeAction(Sections.MATRIX, matrixOutputDiv, generateMatrixButton, MessageActions.GENERATE_MATRIX);
 });
 
+// --- handle states ---
 async function loadTabState(tabId) {
     if (!chrome?.storage?.session) {
         setDefaultUIState();
@@ -375,6 +332,16 @@ async function loadSectionState(tabId, sectionKey) {
     }
 }
 
+async function saveSectionState(tabId, sectionKey, containerContent, containerState, aiInProgress) {
+    try {
+        await chrome.storage.session.set({
+            [`state-${tabId}-${sectionKey}`]: { containerContent, containerState, aiInProgress },
+        });
+    } catch (error) {
+        console.error("Error saving tab state:", error);
+    }
+}
+
 function updateOutputDiv(outputDiv, state) {
     if (outputDiv) {
         outputDiv.innerHTML = state.containerContent || "No content available.";
@@ -389,6 +356,8 @@ function setWaitingState(outputDiv, button) {
     if (button) button.disabled = false;
 }
 
+
+// --- incoming message handler ---
 chrome.runtime.onMessage.addListener(async (request) => {
     const { action, tabId } = request;
     if (!tabId) return;
@@ -411,6 +380,7 @@ chrome.runtime.onMessage.addListener(async (request) => {
 
     let aiInProgress = state.aiInProgress;
 
+    // process the message based on its action type
     switch (action) {
     case MessageActions.CHUNK_RECEIVED:
         ({ state, aiInProgress } = handleChunkReceived(request, state, tabStreamState));
@@ -431,6 +401,7 @@ chrome.runtime.onMessage.addListener(async (request) => {
         break;
     }
 
+    // save updated state back to storage and update UI ONLY if matches current tab
     state.aiInProgress = aiInProgress;
     await saveSectionState(tabId, sectionKey, state.containerContent, state.containerState, state.aiInProgress);
 
@@ -531,89 +502,4 @@ function handleModelDownloadProgress(request, state) {
         state.containerContent = `Model downloading! (this may take a while but will only happen once) ${request.progress * 100}%`;
     }
     return { state, aiInProgress: true };
-}
-
-async function parsePdfBlob(pdfBlob, outputDiv) {
-    try {
-        if (outputDiv) outputDiv.textContent = "Parsing PDF...";
-        const arrayBuffer = await pdfBlob.arrayBuffer();
-        const typedArray = new Uint8Array(arrayBuffer);
-        const pdf = await pdfjsLib.getDocument(typedArray).promise;
-        const pagePromises = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-            pagePromises.push(pdf.getPage(i).then((page) => page.getTextContent()));
-        }
-        const textContents = await Promise.all(pagePromises);
-        const allText = textContents
-            .map((textContent) => textContent.items.map((item) => item.str).join(" "))
-            .join(" ");
-        return allText;
-    } catch (error) {
-        console.error("PDF parsing failed:", error);
-        throw new Error(
-            "PDF parsing failed. Make sure the current tab contains a valid PDF."
-        );
-    }
-}
-
-async function extractPaperIdentifierFromUrl(url, tabId) {
-    const doiRegex = /10\.\d{4,9}\/[^\s]+/i;
-
-    let identifier = null;
-
-    const doiMatch = url.match(doiRegex);
-    if (doiMatch) {
-        identifier = "DOI:" + doiMatch[0];
-        return { identifier, found: true, message: "DOI found in URL." };
-    } else if (
-        /(semanticscholar\.org|arxiv\.org|aclweb\.org|acm\.org|biorxiv\.org)/i.test(
-            url
-        )
-    ) {
-        identifier = "URL:" + url;
-        return {
-            identifier,
-            found: true,
-            message: "Accepted website found in URL.",
-        };
-    } else {
-        try {
-            const hrefArray = await chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                files: ["scripts/content.js"],
-            });
-
-            if (hrefArray && hrefArray.length > 0 && hrefArray[0].result) {
-                const href = hrefArray[0].result;
-                console.log("Content script found link:", href);
-                const linkDoiMatch = href.match(doiRegex);
-                if (linkDoiMatch) {
-                    identifier = "DOI:" + linkDoiMatch[0];
-                    return {
-                        identifier,
-                        found: true,
-                        message: "DOI found in page links.",
-                    };
-                }
-            } else {
-                console.log("Content script did not find a DOI link.");
-            }
-        } catch (error) {
-            console.error("Error executing content script:", error);
-            return {
-                identifier: null,
-                found: false,
-                message: "Error executing content script.",
-            };
-        }
-    }
-    if (identifier) {
-        return { identifier, found: true, message: "Identifier found." };
-    } else {
-        return {
-            identifier: null,
-            found: false,
-            message: "No identifier found in URL or page links.",
-        };
-    }
 }
