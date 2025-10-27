@@ -3,6 +3,7 @@ import { AIProvider } from "./ai-provider.js";
 import { sendError, sendChunk, sendSummaryStreamEnded, sendMatrixStreamEnded } from "../utils/messaging.js";
 import { Sections } from "../../constants.js";
 
+// TODO: gemini api and prompt provider share a lot of logic - refactor common parts into base class
 export class GeminiProvider extends AIProvider {
     constructor(tabId, apiKey, modelPurpose, researchTopic = "") {
         super(tabId);

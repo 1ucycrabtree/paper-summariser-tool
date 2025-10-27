@@ -5,9 +5,9 @@ import { PromptProvider } from "./prompt-provider.js";
 import { SummaryProvider } from "./summary-provider.js";
 
 export class ModelFactory {
+    // determine whether to use Local AI or Gemini Developer API based on hardware specs
     async determineModelType() {
         const { sufficientHardware, vramGB } = await getUserHardwareSpecs();
-
         if (sufficientHardware) {
             console.log(
                 `Sufficient GPU VRAM detected (${vramGB.toFixed(2)} GB). Using local APIs.`
