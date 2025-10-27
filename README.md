@@ -75,7 +75,7 @@ This demonstrates a smart application of the built-in AI for complex information
 
 ## WIP:
 ### Still to do:
-- fix rate limiting for scholar api
+- fix rate limiting for (scholar api)[https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_get_paper]
 - clean up sidepanel.js
 - make it look nice
 - refactor prompt-provider (DRY)

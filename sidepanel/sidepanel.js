@@ -273,7 +273,23 @@ async function handleAnalyzeAction(sectionKey, outputDiv, button, messageAction)
     const semanticScholarUrl = `https://api.semanticscholar.org/graph/v1/paper/${identifierResult.identifier}?fields=openAccessPdf`;
     try {
         const ssResponse = await fetch(semanticScholarUrl);
-        // TODO: handle rate limiting (429) and other errors
+        if (!ssResponse.ok) {
+            let errorMessage;
+            switch (ssResponse.status) {
+            case 429:
+                errorMessage = "Rate limit exceeded when querying Semantic Scholar. Please try again later.";
+                break;
+            case 404:
+                errorMessage = "Paper not found on Semantic Scholar.";
+                break;
+            case 400:
+                errorMessage = "Bad request to Semantic Scholar API. Invalid paper identifier.";
+                break;
+            default:
+                errorMessage = `Semantic Scholar API error: ${ssResponse.status} ${ssResponse.statusText}`; }
+            throw new Error(errorMessage);
+        }
+        
         const ssData = await ssResponse.json();
         const pdfUrl = ssData?.openAccessPdf?.url;
         if (!pdfUrl) {
