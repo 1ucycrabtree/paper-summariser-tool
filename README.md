@@ -70,17 +70,6 @@ This demonstrates a smart application of the built-in AI for complex information
 
 *[Link to your YouTube/Vimeo demo video - ADD THIS FOR SUBMISSION]*
 
-
-
-
-## WIP:
-### Still to do:
-- clean up sidepanel.js
-- make it look nice
-- refactor prompt-provider (DRY)
-- switch between tabs works but if u close and tab and reopen the text is gone UNTIL you move side to side and then its back
-
-
 ### Before 31st:
 - Text description that should explain the features and functionality of your application. Must also include which APIs were used, and the problem you are looking to solve.
 - Include a demonstration video of your application. The video portion of the submission:

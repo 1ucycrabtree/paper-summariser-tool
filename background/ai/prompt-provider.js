@@ -7,7 +7,7 @@ import {
     sendChunk,
     sendMatrixStreamEnded,
 } from "../utils/messaging.js";
-import { Sections, Config } from "../../constants.js";
+import { Sections, Config, MatrixQuestions, MatrixHeaders} from "../../constants.js";
 
 export class PromptProvider extends AIProvider {
     constructor(tabId) {
@@ -132,32 +132,18 @@ export class PromptProvider extends AIProvider {
 }
 
 function getQuestions(researchTopic) {
-    const baseQuestions = [
-        "Core Theme/Concept: What is the central idea or concept explored in this section?",
-        "Purpose of Study: What was the main goal or motivation behind the research?",
-        "Methodology: What methods, metrics, or scope did the authors use (be specific)? Justify their choices if possible.",
-        "Key Findings & Contribution: What was the main takeaway? What's new about their work compared to prior research?"
-    ];
+    const baseQuestions = [...MatrixQuestions];
     if (researchTopic?.trim().length > 0) {
-        baseQuestions.push(`Relevance to Research Topic: Does this paper directly address or inform your research topic (${researchTopic})? If not, respond with "No relevance." Do not infer or invent connections. Justify your answer only if relevant.`);
+        baseQuestions.splice(4, 0, `Relevance to Research Topic: Does this paper directly address or inform your research topic (${researchTopic})? If not, respond with "No relevance." Do not infer or invent connections. Justify your answer only if relevant.`);
     }
-    baseQuestions.push(
-        "Limitations & Identified Gaps: What did the authors admit were limitations? What gaps does their work leave open for you to address?",
-        "Critical Appraisal: Are the claims well-supported? Any unstated assumptions? Is the methodology sound? How does it fit into the broader academic conversation? Consider the academic journal standards."
-    );
     return baseQuestions;
 }
 
 function getMatrixHeaders(researchTopic) {
-    const baseHeaders = [
-        "Core Theme/Concept",
-        "Purpose of Study",
-        "Methodology",
-        "Key Findings & Contribution",
-        ...(researchTopic?.trim().length > 0 ? ["Relevance to Research Topic"] : []),
-        "Limitations & Identified Gaps",
-        "Critical Appraisal"
-    ];
+    const baseHeaders = [...MatrixHeaders];
+    if (researchTopic?.trim().length > 0) {
+        baseHeaders.splice(4, 0, "Relevance to Research Topic");
+    }
     return baseHeaders.map(h => `${h}: <answer>`).join("\n");
 }
 

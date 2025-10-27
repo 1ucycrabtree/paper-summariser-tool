@@ -31,3 +31,21 @@ export const Sections = Object.freeze({
     SUMMARY: "summary",
     MATRIX: "matrix",
 });
+
+export const MatrixQuestions = Object.freeze([
+    "Core Theme/Concept: What is the central idea or concept explored in this section?",
+    "Purpose of Study: What was the main goal or motivation behind the research?",
+    "Methodology: What methods, metrics, or scope did the authors use (be specific)? Justify their choices if possible.",
+    "Key Findings & Contribution: What was the main takeaway? What's new about their work compared to prior research?",
+    "Limitations & Identified Gaps: What did the authors admit were limitations? What gaps does their work leave open for you to address?",
+    "Critical Appraisal: Are the claims well-supported? Any unstated assumptions? Is the methodology sound? How does it fit into the broader academic conversation? Consider the academic journal standards."
+]);
+
+export const MatrixHeaders = Object.freeze([
+    "Core Theme/Concept",
+    "Purpose of Study",
+    "Methodology",
+    "Key Findings & Contribution",
+    "Limitations & Identified Gaps",
+    "Critical Appraisal"
+]);
