@@ -5,7 +5,6 @@ import { PromptProvider } from "./prompt-provider.js";
 import { SummaryProvider } from "./summary-provider.js";
 
 export class ModelFactory {
-
     async determineModelType() {
         const { sufficientHardware, vramGB } = await getUserHardwareSpecs();
 
@@ -57,7 +56,6 @@ export class ModelFactory {
         const topicKey = `researchTopic-${tabId}`;
         const topicResult = await chrome.storage.session.get(topicKey);
         const researchTopic = topicResult[topicKey] || "";
-        
 
         console.log("Creating GeminiProvider...");
         return new GeminiProvider(tabId, apiKey, modelPurpose, researchTopic);
