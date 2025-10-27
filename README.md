@@ -53,7 +53,7 @@ This demonstrates a smart application of the built-in AI for complex information
     * Prompt API (`LanguageModel`)
 * **Fallback AI API:** Google Gemini Developer API (`@google/genai`)
 * **PDF Parsing:** PDF.js (`pdfjs-dist` - included version)
-* **External APIs:** Semantic Scholar API (for finding PDFs)
+* **External APIs:** (Semantic Scholar API)[https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_get_paper] (for finding PDFs from doi)
 * **Bundling:** Webpack
 * **Language:** JavaScript (ES Modules)
 
@@ -75,7 +75,6 @@ This demonstrates a smart application of the built-in AI for complex information
 
 ## WIP:
 ### Still to do:
-- fix rate limiting for (scholar api)[https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_get_paper]
 - clean up sidepanel.js
 - make it look nice
 - refactor prompt-provider (DRY)
