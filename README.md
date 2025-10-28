@@ -69,9 +69,3 @@ This demonstrates a smart application of the built-in AI for complex information
 ## Demo Video
 
 *[Link to your YouTube/Vimeo demo video - ADD THIS FOR SUBMISSION]*
-
-### Before 31st:
-- Text description that should explain the features and functionality of your application. Must also include which APIs were used, and the problem you are looking to solve.
-- Include a demonstration video of your application. The video portion of the submission:
-should be less than three (3) minutes should include footage that shows the application functioning on the device for which it was built must be uploaded to and made publicly visible on YouTube or Vimeo, and a link to the video must be provided on the submission form on the Contest Site; and cannot contain any content, element, or material that violates a third party’s publicity, privacy or intellectual property rights.
-- git repo must include an open source license and should include instructions and everything the judges require to test the application. (Providing a public GitHub repository and clear build instructions is what is required in the context of a chrome extension. No need to publish it to the Chrome Web Store.)
