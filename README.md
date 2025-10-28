@@ -67,4 +67,4 @@ This demonstrates a smart application of the built-in AI for complex information
 7.  *(Optional)* For Gemini API fallback, open the extension side panel and configure your API key.
 
 ## Demo Video
-[Video on Vimeo](https://github.com/1ucycrabtree/paper-summariser-tool#)
+[Video on Vimeo](https://vimeo.com/1131347936)
