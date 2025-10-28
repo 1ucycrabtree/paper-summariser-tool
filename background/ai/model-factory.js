@@ -35,7 +35,7 @@ export class ModelFactory {
             return providersForTab.get(modelPurpose);
         }
 
-        const modelType = await this.determineModelType();
+        const modelType = Models.REMOTE; //await this.determineModelType();
 
         let ProviderClass;
         if (modelPurpose === Sections.SUMMARY) {
@@ -65,7 +65,7 @@ export class ModelFactory {
     }
 
     async createGeminiProvider(tabId, modelPurpose) {
-        const keyResult = await chrome.storage.local.get("geminiApiKey");
+        const keyResult = await chrome.storage.session.get("geminiApiKey");
         const apiKey = keyResult.geminiApiKey;
 
         if (!apiKey) {

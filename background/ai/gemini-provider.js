@@ -65,8 +65,8 @@ export class GeminiProvider extends AIProvider {
         }
     }
     buildMatrixPrompt(text) {
-        const questions = MatrixQuestions;
-        const matrixHeaders = MatrixHeaders;
+        const questions = [...MatrixQuestions];
+        const matrixHeaders = [...MatrixHeaders];
 
         if (this.researchTopic.trim().length > 0) {
             questions.splice(4, 0,

@@ -88,50 +88,68 @@ document.addEventListener("DOMContentLoaded", function () {
             pageTitleContainer.innerHTML = errorDiv;
         }
     }
-
-    async function setApiKey() {
-        if (chrome?.storage?.session) {
-            chrome.storage.session.get(["geminiApiKey"], (result) => {
-                if (result.geminiApiKey) {
-                    apiKeyInput.value = result.geminiApiKey;
-                    apiStatus.textContent = "API key loaded from session storage.";
-                } else {
-                    apiStatus.textContent = "Please enter your Gemini API key.";
-                }
-            });
-        }
-    }
 });
 
+async function setApiKey() {
+    if (chrome?.storage?.session) {
+        chrome.storage.session.get(["geminiApiKey"], (result) => {
+            if (result.geminiApiKey) {
+                apiKeyInput.value = result.geminiApiKey;
+                apiStatus.textContent = "API key loaded from session storage.";
+            } else {
+                apiStatus.textContent = "Please enter your Gemini API key.";
+            }
+        });
+    }
+}
+
 async function handleAnalyzeAction(sectionKey, outputDiv, button, messageAction) {
-    if (!outputDiv) return;
-    outputDiv.textContent = "Analyzing tab...";
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!outputDiv || !button) return;
+    try {
+        
+        button.disabled = true;
+        outputDiv.textContent = "Analyzing tab...";
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    if (!tab?.url) {
-        await handleNoTabUrl(tab, sectionKey, outputDiv);
-        return;
+        if (!tab?.url) {
+            await handleNoTabUrl(tab, sectionKey, outputDiv);
+            return;
+        }
+
+        const url = tab.url.toLowerCase();
+        const title = tab.title ? tab.title.toLowerCase() : "";
+        const pdfInUrlRegex = /[./?=]pdf/i;
+        const isUrlDirectPdf = url.endsWith(".pdf") || url.startsWith("blob:");
+        const isViewerActive = title.endsWith(".pdf");
+        const isPdfInUrl = pdfInUrlRegex.test(tab.url);
+
+        if (isUrlDirectPdf || isViewerActive || isPdfInUrl) {
+            await handlePdfTab(tab, sectionKey, outputDiv, button, messageAction);
+            return;
+        }
+
+        const identifierResult = await extractPaperIdentifierFromUrl(tab.url, tab.id);
+        if (!identifierResult.found) {
+            await handleNoIdentifier(tab, sectionKey, outputDiv, identifierResult);
+            throw new Error("Could not find a paper identifier."); // This will be caught below
+        }
+
+        await handleSemanticScholarLookup(tab, sectionKey, outputDiv, identifierResult);
+        button.disabled = false;
+    } catch (error) {
+        console.error(`Error in handleAnalyzeAction for ${sectionKey}:`, error);
+        if (outputDiv) {
+            outputDiv.textContent = `Analysis failed: ${error.message}`;
+        }
+        if (button) {
+            button.disabled = false; // Ensure button is re-enabled on error
+        }
+
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab && outputDiv) {
+            await saveSectionState(tab.id, sectionKey, outputDiv.innerHTML, { display: "block" }, false);
+        }
     }
-
-    const url = tab.url.toLowerCase();
-    const title = tab.title ? tab.title.toLowerCase() : "";
-    const pdfInUrlRegex = /[./?=]pdf/i;
-    const isUrlDirectPdf = url.endsWith(".pdf") || url.startsWith("blob:");
-    const isViewerActive = title.endsWith(".pdf");
-    const isPdfInUrl = pdfInUrlRegex.test(tab.url);
-
-    if (isUrlDirectPdf || isViewerActive || isPdfInUrl) {
-        await handlePdfTab(tab, sectionKey, outputDiv, button, messageAction);
-        return;
-    }
-
-    const identifierResult = await extractPaperIdentifierFromUrl(tab.url, tab.id);
-    if (!identifierResult.found) {
-        await handleNoIdentifier(tab, sectionKey, outputDiv, identifierResult);
-        return;
-    }
-
-    await handleSemanticScholarLookup(tab, sectionKey, outputDiv, identifierResult);
 }
 
 async function handleNoTabUrl(tab, sectionKey, outputDiv) {
@@ -243,12 +261,18 @@ summarizeButton?.addEventListener("click", async () => {
 });
 
 generateMatrixButton?.addEventListener("click", async () => {
-    const researchTopicInput = document.getElementById("researchTopicInput");
-    const researchTopic = researchTopicInput ? researchTopicInput.value.trim() : "";
-    if (chrome?.storage?.session && currentTabId) {
-        await chrome.storage.session.set({ [`researchTopic-${currentTabId}`]: researchTopic });
+    try {
+        const researchTopicInput = document.getElementById("researchTopicInput");
+        const researchTopic = researchTopicInput ? researchTopicInput.value.trim() : "";
+        if (chrome?.storage?.session && currentTabId) {
+            await chrome.storage.session.set({ [`researchTopic-${currentTabId}`]: researchTopic });
+        }
+        await handleAnalyzeAction(Sections.MATRIX, matrixOutputDiv, generateMatrixButton, MessageActions.GENERATE_MATRIX);
+    } catch (error) {
+        console.error("Error handling generate matrix action:", error);
+        if (matrixOutputDiv) matrixOutputDiv.textContent = "An unexpected error occurred.";
+        if (generateMatrixButton) generateMatrixButton.disabled = false;
     }
-    await handleAnalyzeAction(Sections.MATRIX, matrixOutputDiv, generateMatrixButton, MessageActions.GENERATE_MATRIX);
 });
 
 apiKeyButton?.addEventListener("click", () => {
@@ -526,31 +550,40 @@ function handleModelDownloadProgress(request, state) {
 
 async function handleStopAIEvents({ tabId }) {
     console.log(`Stopping AI events for tab ${tabId}.`);
+    await Promise.all(Object.values(Sections).map(sectionKey =>
+        processSectionStop(tabId, sectionKey)
+    ));
+    resetStreamingStates(tabId);
+}
 
-    for (const sectionKey of Object.values(Sections)) {
-        const storageKey = `state-${tabId}-${sectionKey}`;
-        const result = await chrome.storage.session.get(storageKey);
-        let state = result[storageKey];
+async function processSectionStop(tabId, sectionKey) {
+    const storageKey = `state-${tabId}-${sectionKey}`;
+    const result = await chrome.storage.session.get(storageKey);
+    let state = result[storageKey];
 
-        if (state && state.aiInProgress) {
-            state = removeSpinnerFromContent(state);
-            state.containerContent += "<br><em>AI generation stopped by user.</em>";
-            state.aiInProgress = false;
+    if (!state?.aiInProgress) return;
 
-            await saveSectionState(tabId, sectionKey, state.containerContent, state.containerState, false);
+    state = removeSpinnerFromContent(state);
+    state.containerContent += "<br><em>AI generation stopped by user.</em>";
+    state.aiInProgress = false;
 
-            if (tabId === currentTabId) {
-                const outputDiv = sectionKey === Sections.SUMMARY ? summaryOutputDiv : matrixOutputDiv;
-                const button = sectionKey === Sections.SUMMARY ? summarizeButton : generateMatrixButton;
-                if (outputDiv) outputDiv.innerHTML = state.containerContent;
-                if (button) button.disabled = false;
-            }
-        }
+    await saveSectionState(tabId, sectionKey, state.containerContent, state.containerState, false);
+
+    if (tabId === currentTabId) {
+        updateSectionUI(sectionKey, state.containerContent);
     }
+}
 
-    if (streamingStates[tabId]) {
-        for (const section in streamingStates[tabId]) {
-            streamingStates[tabId][section].isFirstChunk = true;
-        }
+function updateSectionUI(sectionKey, content) {
+    const outputDiv = sectionKey === Sections.SUMMARY ? summaryOutputDiv : matrixOutputDiv;
+    const button = sectionKey === Sections.SUMMARY ? summarizeButton : generateMatrixButton;
+    if (outputDiv) outputDiv.innerHTML = content;
+    if (button) button.disabled = false;
+}
+
+function resetStreamingStates(tabId) {
+    if (!streamingStates[tabId]) return;
+    for (const streamState of Object.values(streamingStates[tabId])) {
+        streamState.isFirstChunk = true;
     }
 }

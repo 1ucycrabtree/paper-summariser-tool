@@ -63,7 +63,7 @@ This demonstrates a smart application of the built-in AI for complex information
 3.  Run `npm run build` to build the extension files into the `dist` directory.
 4.  Open Chrome, go to `chrome://extensions/`.
 5.  Enable "Developer mode".
-6.  Click "Load unpacked" and select the `dist` directory.
+6.  Click "Load unpacked" and select the `paper-summariser-tool` repo directory.
 7.  *(Optional)* For Gemini API fallback, open the extension side panel and configure your API key.
 
 ## Demo Video
