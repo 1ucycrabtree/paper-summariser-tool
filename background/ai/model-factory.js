@@ -5,10 +5,12 @@ import { PromptProvider } from "./prompt-provider.js";
 import { SummaryProvider } from "./summary-provider.js";
 
 export class ModelFactory {
-
+    constructor() {
+        this.providersByTab = new Map();
+    }
+    // determine whether to use Local AI or Gemini Developer API based on hardware specs
     async determineModelType() {
         const { sufficientHardware, vramGB } = await getUserHardwareSpecs();
-
         if (sufficientHardware) {
             console.log(
                 `Sufficient GPU VRAM detected (${vramGB.toFixed(2)} GB). Using local APIs.`
@@ -23,6 +25,16 @@ export class ModelFactory {
     }
 
     async createProvider(tabId, modelPurpose = null) {
+        if (!this.providersByTab.has(tabId)) {
+            this.providersByTab.set(tabId, new Map());
+        }
+
+        const providersForTab = this.providersByTab.get(tabId);
+
+        if (providersForTab.has(modelPurpose)) {
+            return providersForTab.get(modelPurpose);
+        }
+
         const modelType = await this.determineModelType();
 
         let ProviderClass;
@@ -36,14 +48,20 @@ export class ModelFactory {
             throw new Error(`Unknown model purpose: ${modelPurpose}`);
         }
 
+        let provider;
         if (modelType === Models.LOCAL) {
-            const provider = new ProviderClass(tabId);
+            provider = new ProviderClass(tabId);
             if (await provider.isAvailable()) {
                 return provider;
             }
             console.warn(`${ProviderClass.name} unavailable, falling back to Gemini`);
+            provider = await this.createGeminiProvider(tabId, modelPurpose);
         }
-        return this.createGeminiProvider(tabId, modelPurpose);
+        else {
+            provider = await this.createGeminiProvider(tabId, modelPurpose);
+        }
+        providersForTab.set(modelPurpose, provider);
+        return provider;
     }
 
     async createGeminiProvider(tabId, modelPurpose) {
@@ -57,9 +75,21 @@ export class ModelFactory {
         const topicKey = `researchTopic-${tabId}`;
         const topicResult = await chrome.storage.session.get(topicKey);
         const researchTopic = topicResult[topicKey] || "";
-        
 
         console.log("Creating GeminiProvider...");
         return new GeminiProvider(tabId, apiKey, modelPurpose, researchTopic);
+    }
+
+    async destroyProviderForTab(tabId) {
+        if (this.providersByTab.has(tabId)) {
+            const providersForTab = this.providersByTab.get(tabId);
+            for (const provider of providersForTab.values()) {
+                if (provider && typeof provider.destroy === "function") {
+                    await provider.destroy();
+                }
+            }
+            this.providersByTab.delete(tabId);
+            console.log(`Destroyed providers for tab ${tabId}`);
+        }
     }
 }

@@ -42,3 +42,10 @@ export function sendMatrixStreamEnded(tabId, section) {
         section: section,
     });
 }
+
+export function stopEvents(tabId) {
+    chrome.runtime.sendMessage({
+        action: MessageActions.STOP_AI,
+        tabId: tabId,
+    });
+}

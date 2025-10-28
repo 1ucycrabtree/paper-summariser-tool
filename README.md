@@ -1,6 +1,6 @@
 # AI Synthesis Matrix Generator - Chrome Extension
 
-**Built for the &#103;&#111;&#111;&#103;&#108;&#101; &#99;&#104;&#114;&#111;&#109;&#101; &#98;&#117;&#105;&#108;&#116;-&#105;&#110; &#65;&#73; &#99;&#104;&#97;&#108;&#108;&#101;&#110;&#103;&#101; &#50;&#48;&#50;&#53; 🥸 **
+**Built for the &#103;&#111;&#111;&#103;&#108;&#101; &#99;&#104;&#114;&#111;&#109;&#101; &#98;&#117;&#105;&#108;&#116;-&#105;&#110; &#65;&#73; &#99;&#104;&#97;&#108;&#108;&#101;&#110;&#103;&#101; &#50;&#48;&#50;&#53; 🥸**
 
 ## Purpose & Problem Solved
 
@@ -53,7 +53,7 @@ This demonstrates a smart application of the built-in AI for complex information
     * Prompt API (`LanguageModel`)
 * **Fallback AI API:** Google Gemini Developer API (`@google/genai`)
 * **PDF Parsing:** PDF.js (`pdfjs-dist` - included version)
-* **External APIs:** Semantic Scholar API (for finding PDFs)
+* **External APIs:** (Semantic Scholar API)[https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_get_paper] (for finding PDFs from doi)
 * **Bundling:** Webpack
 * **Language:** JavaScript (ES Modules)
 
@@ -69,16 +69,6 @@ This demonstrates a smart application of the built-in AI for complex information
 ## Demo Video
 
 *[Link to your YouTube/Vimeo demo video - ADD THIS FOR SUBMISSION]*
-
-
-
-
-## WIP:
-### Still to do:
-- fix rate limiting for scholar api
-- clean up sidepanel.js
-- make it look nice
-- refactor prompt-provider (DRY)
 
 ### Before 31st:
 - Text description that should explain the features and functionality of your application. Must also include which APIs were used, and the problem you are looking to solve.

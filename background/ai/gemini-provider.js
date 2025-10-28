@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { AIProvider } from "./ai-provider.js";
 import { sendError, sendChunk, sendSummaryStreamEnded, sendMatrixStreamEnded } from "../utils/messaging.js";
-import { Sections } from "../../constants.js";
+import { MatrixQuestions, MatrixHeaders, Sections } from "../../constants.js";
 
 export class GeminiProvider extends AIProvider {
     constructor(tabId, apiKey, modelPurpose, researchTopic = "") {
@@ -65,23 +65,8 @@ export class GeminiProvider extends AIProvider {
         }
     }
     buildMatrixPrompt(text) {
-        const questions = [
-            "Core Theme/Concept: What is the central idea or concept explored in this section?",
-            "Purpose of Study: What was the main goal or motivation behind the research?",
-            "Methodology: What methods, metrics, or scope did the authors use (be specific)? Justify their choices if possible.",
-            "Key Findings & Contribution: What was the main takeaway? What's new about their work compared to prior research?",
-            "Limitations & Identified Gaps: What did the authors admit were limitations? What gaps does their work leave open for you to address?",
-            "Critical Appraisal: Are the claims well-supported? Any unstated assumptions? Is the methodology sound? How does it fit into the broader academic conversation? Consider the academic journal standards."
-        ];
-
-        let matrixHeaders = [
-            "Core Theme/Concept",
-            "Purpose of Study",
-            "Methodology",
-            "Key Findings & Contribution",
-            "Limitations & Identified Gaps",
-            "Critical Appraisal"
-        ];
+        const questions = MatrixQuestions;
+        const matrixHeaders = MatrixHeaders;
 
         if (this.researchTopic.trim().length > 0) {
             questions.splice(4, 0,
