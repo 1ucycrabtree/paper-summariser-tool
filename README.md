@@ -53,7 +53,7 @@ This demonstrates a smart application of the built-in AI for complex information
     * Prompt API (`LanguageModel`)
 * **Fallback AI API:** Google Gemini Developer API (`@google/genai`)
 * **PDF Parsing:** PDF.js (`pdfjs-dist` - included version)
-* **External APIs:** (Semantic Scholar API)[https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_get_paper] (for finding PDFs from doi)
+* **External APIs:** [Semantic Scholar API](https://api.semanticscholar.org/api-docs/#tag/Paper-Data/operation/get_graph_get_paper) (for finding PDFs from doi)
 * **Bundling:** Webpack
 * **Language:** JavaScript (ES Modules)
 
@@ -67,5 +67,4 @@ This demonstrates a smart application of the built-in AI for complex information
 7.  *(Optional)* For Gemini API fallback, open the extension side panel and configure your API key.
 
 ## Demo Video
-
-*[Link to your YouTube/Vimeo demo video - ADD THIS FOR SUBMISSION]*
+[Video on Vimeo](https://github.com/1ucycrabtree/paper-summariser-tool#)
